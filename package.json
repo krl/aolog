@@ -1,0 +1,20 @@
+{
+  "name": "aolog",
+  "version": "0.1.0",
+  "description": "Append only log",
+  "main": "index.js",
+  "dependencies": {
+    "bloem": "^0.2.4",
+    "bloomfilter": "0.0.16",
+    "lodash": "^3.10.0",
+    "seamless-immutable": "^2.4.2"
+  },
+  "devDependencies": {
+    "babel-core": "^5.8.5",
+    "babelify": "^6.1.3",
+    "regeneratorify": "0.0.2",
+    "twojs-browserify": "^0.2.0"
+  },
+  "author": "Kristoffer Ström <kristoffer@rymdkoloni.se>",
+  "license": "MIT"
+}
