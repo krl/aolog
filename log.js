@@ -10,7 +10,6 @@ var EOF = 0
 var SKIP = 1
 
 module.exports = function (ipfs, BUCKET_SIZE) {
-
   var Iterator = function (over, filter, reverse) {
     var stack = [{obj: over, idx: 0}]
     var fullfilter = makefilter(filter)
@@ -45,6 +44,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
 
   var Ref = function (pointsto, hash, filters) {
     return {
+      type: 'Ref',
       filters: filters || (pointsto && pointsto.filter()),
       ref: pointsto,
       hash: hash,
@@ -89,6 +89,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
 
   var Bucket = function (elements, filters) {
     return {
+      type: 'Bucket',
       elements: elements || [],
       append: function (el) {
         if (this.elements.length === BUCKET_SIZE) {
@@ -199,6 +200,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
 
   var Finger = function (head, rest, tail) {
     return {
+      type: 'Finger',
       tail: tail,
       rest: rest,
       head: head,
