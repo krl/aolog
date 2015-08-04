@@ -4,9 +4,10 @@
   "description": "Append only log",
   "main": "index.js",
   "dependencies": {
+    "async": "^1.4.0",
     "bloem": "^0.2.4",
     "lodash": "^3.10.0",
-    "async": "^1.4.0"
+    "pako": "^0.2.7"
   },
   "devDependencies": {
     "d3": "^3.5.6"

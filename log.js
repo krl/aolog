@@ -3,8 +3,9 @@
 // var persistances = 0
 
 var _ = require('lodash')
-var bloom = require('blomma')(128, 3)
+var bloom = require('blomma')(1024, 1)
 var async = require('async')
+var pako = require('pako')
 
 var EOF = 0
 var SKIP = 1
@@ -276,7 +277,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
     var serialized = {}
 
     _.forEach(filters, function (value, key) {
-      serialized[key] = filters[key].toString('base64')
+      serialized[key] = new Buffer(pako.deflate(filters[key])).toString('base64')
     })
     return serialized
   }
@@ -284,7 +285,9 @@ module.exports = function (ipfs, BUCKET_SIZE) {
   var deserialize_filters = function (filters) {
     var deserialized = {}
     _.forEach(filters, function (value, key) {
-      deserialized[key] = new Buffer(filters[key], 'base64')
+      deserialized[key] = new Buffer(
+        pako.inflate(new Buffer(filters[key], 'base64')),
+        'base64')
     })
     return deserialized
   }
