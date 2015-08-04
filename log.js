@@ -39,6 +39,22 @@ module.exports = function (ipfs, BUCKET_SIZE) {
             cb(null, element)
           }
         })
+      },
+      take: function (nr, cb) {
+        var self = this
+        var accum = []
+        async.forever(function (next) {
+          self.next(function (err, value, status) {
+            if (err) return cb(null, err)
+            if (status === EOF) return cb(null, accum)
+            if (!nr--) return cb(null, accum)
+            accum.push(value)
+            next()
+          })
+        })
+      },
+      all: function (cb) {
+        this.take(Infinity, cb)
       }
     }
   }
@@ -95,7 +111,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       append: function (el) {
         if (this.elements.length === BUCKET_SIZE) {
           return new Finger(new Ref(new Bucket(this.elements)),
-                            new Ref(new Bucket([])),
+                            new Ref(new Branch([])),
                             new Ref(new Bucket([el])))
         } else {
           var newelements = _.clone(this.elements)
@@ -104,12 +120,6 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         }
       },
       filter: function () {
-        // can we combine existing filters?
-        if (this.elements[0] &&
-            typeof this.elements[0].filter === 'function') {
-          return combine(this.elements)
-        }
-
         var filter = {}
         // else create new filters
         _.forEach(this.elements, function (element) {
@@ -124,16 +134,13 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       },
       get: function (idx, filter, cb) {
         var el = this.elements[idx]
-        if (typeof el !== 'undefined') {
-          if (typeof el.get === 'function' ||
-              // leaf without links
-              matches(el, filter.words)) {
-            return cb(null, el)
-          } else {
-            return cb(null, null, SKIP)
-          }
+        if (typeof el === 'undefined') return cb(null, null, EOF)
+
+        if (matches(el, filter.words)) {
+          return cb(null, el)
+        } else {
+          return cb(null, null, SKIP)
         }
-        cb(null, null, EOF)
       },
       iterator: function (filter) {
         return new Iterator(this, filter)
@@ -195,6 +202,76 @@ module.exports = function (ipfs, BUCKET_SIZE) {
             })
           })
         }
+      }
+    }
+  }
+
+  var Branch = function (refs, filters) {
+    return {
+      type: 'Branch',
+      refs: refs,
+      append: function (el) {
+        if (this.refs.length === BUCKET_SIZE) {
+          return new Finger(new Ref(new Branch(this.refs)),
+                            new Ref(new Branch([])),
+                            new Ref(new Branch([el])))
+        } else {
+          var newrefs = _.clone(this.refs)
+          newrefs.push(el)
+          return new Branch(newrefs)
+        }
+      },
+      filter: function () {
+        return combine(this.refs)
+      },
+      get: function (idx, filter, cb) {
+        var ref = this.refs[idx]
+        if (ref) {
+          cb(null, ref)
+        } else {
+          cb(null, null, EOF)
+        }
+      },
+      iterator: function (filter) {
+        return new Iterator(this, filter)
+      },
+      persist: function (cb) {
+        var self = this
+        var filters = {}
+        async.series(_.map(self.refs, function (ref, idx) {
+          var name = zeropad(idx)
+          filters[name] = serialize_filters(self.refs[idx].filters)
+          return function (done) {
+            ref.persist(function (err, persisted) {
+              if (err) return done(err)
+              done(null, {
+                Name: name,
+                Hash: persisted.Hash,
+                Size: persisted.Size
+              })
+            })
+          }
+        }), function (err, links) {
+          if (err) return cb(err)
+
+          var obj = {
+            Data: JSON.stringify({
+              type: self.type,
+              filters: filters
+            }),
+            Links: links
+          }
+
+          var buf = new Buffer(JSON.stringify(obj))
+          ipfs.object.put(buf, 'json', function (err, put) {
+            if (err) return cb(err)
+            ipfs.object.stat(put.Hash, function (err, stat) {
+              if (err) return cb(err)
+              cb(null, {Hash: put.Hash,
+                        Size: stat.CumulativeSize})
+            })
+          })
+        })
       }
     }
   }
@@ -366,15 +443,13 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       var object = JSON.parse(res.Data)
 
       if (object.type === 'Bucket') {
-        if (res.Links.length === 0) {
-          cb(null, new Bucket(object.data.elements))
-        } else {
-          cb(null, new Bucket(_.map(res.Links, function (link, idx) {
-            return new Ref(null,
-                           link.Hash,
-                           deserialize_filters(object.filters[zeropad(idx)]))
-          })))
-        }
+        cb(null, new Bucket(object.data.elements))
+      } else if (object.type === 'Branch') {
+        cb(null, new Branch(_.map(res.Links, function (link, idx) {
+          return new Ref(null,
+                         link.Hash,
+                         deserialize_filters(object.filters[zeropad(idx)]))
+        })))
       } else if (object.type === 'Finger') {
         var linkmap = {}
         _.forEach(res.Links, function (link) {

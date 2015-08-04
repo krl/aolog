@@ -45,7 +45,7 @@ describe('logs', function () {
   }
 
   it('should have pushed a bucket down the middle!', function () {
-    assert.equal(log5.rest.ref.elements[0].ref.elements[0], BUCKET_SIZE)
+    assert.equal(log5.rest.ref.refs[0].ref.elements[0], BUCKET_SIZE)
   })
 })
 
@@ -77,7 +77,7 @@ describe('iterators', function () {
       }, function () { done() })
     })
 
-    it('should have gotten the right elements', function () {
+    it('should have gotten the right elements with next', function () {
       assert.deepEqual(expected, result)
     })
   })
@@ -93,11 +93,10 @@ describe('iterators', function () {
       expected.push(i)
     }
 
-    var iter = log.iterator()
-
     var result = []
 
     before(function (done) {
+      var iter = log.iterator()
       async.forever(function (next) {
         iter.next(function (err, value, status) {
           if (err) throw (err)
@@ -111,6 +110,56 @@ describe('iterators', function () {
 
     it('should have gotten the right elements', function () {
       assert.deepEqual(expected, result)
+    })
+
+    var nr = Math.floor(SIZE/3)
+    var resultPart = []
+
+    before(function (done) {
+      var iter = log.iterator()
+
+      iter.take(nr, function (err, array) {
+        if (err) throw err
+        resultPart = array
+        done()
+      })
+    })
+
+    it('should have taken ' + nr + ' of ' + SIZE + ' elements', function () {
+      assert.deepEqual(resultPart, expected.slice(0, nr))
+    })
+
+    var resultTakeMore
+
+    before(function (done) {
+      var iter = log.iterator()
+
+      iter.take(SIZE * 2, function (err, array) {
+        if (err) throw err
+        resultTakeMore = array
+        done()
+      })
+
+    })
+
+    it('should have stopped at ' + SIZE + ' elements', function () {
+      assert.deepEqual(resultTakeMore, expected)
+    })
+
+    var resultAll = []
+    before(function (done) {
+      var iter = log.iterator()
+
+      iter.all(function (err, array) {
+        if (err) throw err
+        resultAll = array
+        done()
+      })
+
+    })
+
+    it('should have taken all elements', function () {
+      assert.deepEqual(resultAll, result)
     })
   })
 })
@@ -152,7 +201,6 @@ describe('filters', function () {
       iter.next(function (err, value, status) {
         if (err) throw (err)
         if (status === aolog.eof) return next(1)
-
         count++
         if (!value.msg.match('buzz')) {
           throw 'no buzz!'
@@ -286,6 +334,7 @@ describe('persistance', function () {
     })
   })
 
+
   describe('persist large tree', function () {
 
     var log = aolog.empty()
@@ -299,7 +348,7 @@ describe('persistance', function () {
     var hash
 
     before(function (done) {
-      this.timeout(20000)
+      this.timeout(40000)
       log.persist(function (err, res) {
         if (err) throw err
         hash = res.Hash
@@ -320,7 +369,7 @@ describe('persistance', function () {
     var resultB = []
 
     before(function (done) {
-      this.timeout(20000)
+      this.timeout(40000)
       var iterA = log.iterator()
       var iterB = restored.iterator()
 
@@ -350,9 +399,9 @@ describe('persistance', function () {
 
     it('should have the same elements', function () {
       assert.deepEqual(resultA, resultB)
-
     })
   })
+
 
   describe('persist filters', function () {
 
@@ -411,8 +460,8 @@ describe('persistance', function () {
 
       for (var i = 0 ; i < BUCKET_SIZE ; i++) {
         assert.equal(
-          log.rest.ref.head.ref.elements[i].filters.is.toString(),
-          restored.rest.ref.head.ref.elements[i].filters.is.toString())
+          log.rest.ref.head.ref.refs[i].filters.is.toString(),
+          restored.rest.ref.head.ref.refs[i].filters.is.toString())
       }
     })
   })
