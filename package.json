@@ -1,11 +1,11 @@
 {
   "name": "aolog",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Append only log",
   "main": "index.js",
   "dependencies": {
     "async": "^1.4.0",
-    "bloem": "^0.2.4",
+    "blomma": "^0.2.0",
     "lodash": "^3.10.0",
     "pako": "^0.2.7"
   },

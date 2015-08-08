@@ -3,7 +3,7 @@
 var assert = require('assert')
 var BUCKET_SIZE = 16
 var ipfs = require('ipfs-api')()
-var aolog = require('../log.js')(ipfs, BUCKET_SIZE)
+var aolog = require('../index.js')(ipfs, BUCKET_SIZE)
 var _ = require('lodash')
 var async = require('async')
 
