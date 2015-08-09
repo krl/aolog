@@ -1,6 +1,6 @@
 {
   "name": "aolog",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "description": "Append only log",
   "main": "index.js",
   "dependencies": {
@@ -9,7 +9,11 @@
     "lodash": "^3.10.0",
     "pako": "^0.2.7"
   },
+  "scripts": {
+    "build": "./node_modules/.bin/browserify -s AOlog -e ./index.js > aolog.js"
+  },
   "devDependencies": {
+    "browserify": "^11.0.1",
     "d3": "^3.5.6"
   },
   "author": "Kristoffer Ström <kristoffer@rymdkoloni.se>",
