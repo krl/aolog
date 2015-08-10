@@ -49,7 +49,6 @@ describe('logs', function () {
   })
 })
 
-
 describe('iterators', function () {
 
   describe('bucket iterator', function () {
@@ -159,7 +158,89 @@ describe('iterators', function () {
     })
 
     it('should have taken all elements', function () {
-      assert.deepEqual(resultAll, result)
+      assert.deepEqual(resultAll, expected)
+    })
+  })
+
+  describe('finger iterator reverse', function () {
+    var log = aolog.empty()
+
+    var SIZE = BUCKET_SIZE
+    var expected = []
+
+    for (var i = 0 ; i < SIZE ; i++) {
+      log = log.append(i)
+      expected.unshift(i)
+    }
+
+    var result = []
+
+    before(function (done) {
+      var iter = log.reverseIterator()
+      async.forever(function (next) {
+        iter.next(function (err, value, status) {
+          if (err) throw (err)
+          if (status === aolog.eof) return next(1)
+
+          result.push(value)
+          next()
+        })
+      }, function () { done() })
+    })
+
+    it('should have gotten the right elements', function () {
+      assert.deepEqual(expected, result)
+    })
+
+
+    var nr = Math.floor(SIZE/3)
+    var resultPart = []
+
+    before(function (done) {
+      var iter = log.reverseIterator()
+
+      iter.take(nr, function (err, array) {
+        if (err) throw err
+        resultPart = array
+        done()
+      })
+    })
+
+    it('should have taken ' + nr + ' of ' + SIZE + ' elements', function () {
+      assert.deepEqual(resultPart, expected.slice(0, nr))
+    })
+
+    var resultTakeMore
+
+    before(function (done) {
+      var iter = log.reverseIterator()
+
+      iter.take(SIZE * 2, function (err, array) {
+        if (err) throw err
+        resultTakeMore = array
+        done()
+      })
+
+    })
+
+    it('should have stopped at ' + SIZE + ' elements', function () {
+      assert.deepEqual(resultTakeMore, expected)
+    })
+
+    var resultAll = []
+    before(function (done) {
+      var iter = log.reverseIterator()
+
+      iter.all(function (err, array) {
+        if (err) throw err
+        resultAll = array
+        done()
+      })
+
+    })
+
+    it('should have taken all elements', function () {
+      assert.deepEqual(resultAll, expected)
     })
   })
 })

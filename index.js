@@ -12,8 +12,9 @@ var SKIP = 1
 
 module.exports = function (ipfs, BUCKET_SIZE) {
   var Iterator = function (over, filter, reverse) {
-    var stack = [{obj: over, idx: 0}]
+    var stack = [{obj: over, idx: reverse ? -1 : 0}]
     var fullfilter = makefilter(filter)
+
     return {
       pushcount: 0,
       next: function (cb) {
@@ -25,17 +26,17 @@ module.exports = function (ipfs, BUCKET_SIZE) {
             stack.shift()
             // toplevel eof?
             if (stack.length === 0) return cb(null, null, EOF)
-            stack[0].idx++
+            reverse ? stack[0].idx-- : stack[0].idx++
             self.next(cb)
           } else if (status === SKIP) {
-            stack[0].idx++
+            reverse ? stack[0].idx-- : stack[0].idx++
             self.next(cb)
           } else if (typeof element.get === 'function') {
             self.pushcount++
-            stack.unshift({obj: element, idx: 0})
+            stack.unshift({obj: element, idx: reverse ? -1 : 0})
             self.next(cb)
           } else { // leaf
-            stack[0].idx++
+            reverse ? stack[0].idx-- : stack[0].idx++
             cb(null, element)
           }
         })
@@ -73,7 +74,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       },
       get: function (idx, filter, cb) {
         var self = this
-        if (idx === 0) {
+        if (idx === 0 || idx === -1) {
           if (!subsetMatches(self.filters, filter.blooms)) {
             cb(null, null, SKIP)
           } else if (self.ref) {
@@ -133,6 +134,9 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         return filter
       },
       get: function (idx, filter, cb) {
+        if (idx < 0) {
+          idx += this.elements.length
+        }
         var el = this.elements[idx]
         if (typeof el === 'undefined') return cb(null, null, EOF)
 
@@ -144,6 +148,9 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       },
       iterator: function (filter) {
         return new Iterator(this, filter)
+      },
+      reverseIterator: function (filter) {
+        return new Iterator(this, filter, true)
       },
       persist: function (cb) {
         var self = this
@@ -225,6 +232,9 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         return combine(this.refs)
       },
       get: function (idx, filter, cb) {
+        if (idx < 0) {
+          idx += this.refs.length
+        }
         var ref = this.refs[idx]
         if (ref) {
           cb(null, ref)
@@ -234,6 +244,9 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       },
       iterator: function (filter) {
         return new Iterator(this, filter)
+      },
+      reverseIterator: function (filter) {
+        return new Iterator(this, filter, true)
       },
       persist: function (cb) {
         var self = this
@@ -301,13 +314,16 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         return combine([head, rest, tail])
       },
       get: function (idx, filter, cb) {
-        if (idx === 0) return cb(null, head)
-        if (idx === 1) return cb(null, rest)
-        if (idx === 2) return cb(null, tail)
+        if (idx === 0 || idx === -3) return cb(null, head)
+        if (idx === 1 || idx === -2) return cb(null, rest)
+        if (idx === 2 || idx === -1) return cb(null, tail)
         cb(null, null, EOF)
       },
       iterator: function (filter) {
         return new Iterator(this, filter)
+      },
+      reverseIterator: function (filter) {
+        return new Iterator(this, filter, true)
       },
       persist: function (cb) {
         var self = this
