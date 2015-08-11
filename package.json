@@ -1,6 +1,6 @@
 {
   "name": "aolog",
-  "version": "1.0.1",
+  "version": "1.0.4",
   "description": "Append only log",
   "main": "index.js",
   "dependencies": {

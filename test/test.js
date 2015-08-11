@@ -632,11 +632,10 @@ describe('persistance', function () {
     })
   })
 
-
   describe('persist, restore, add, persist', function () {
 
     var log
-    var SIZE = BUCKET_SIZE - 2
+    var SIZE = BUCKET_SIZE * 8
 
     var expected = []
 

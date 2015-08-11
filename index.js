@@ -67,10 +67,20 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       ref: pointsto,
       hash: hash,
       append: function (el, cb) {
-        this.ref.append(el, function (err, res) {
-          if (err) return cb(err)
-          cb(null, new Ref(res))
-        })
+        if (this.ref) {
+          this.ref.append(el, function (err, res) {
+            if (err) return cb(err)
+            cb(null, new Ref(res))
+          })
+        } else {
+          restore(this.hash, function (err, restored) {
+            if (err) return cb(err)
+            restored.append(el, function (err, res) {
+              if (err) return cb(err)
+              cb(null, new Ref(res))
+            })
+          })
+        }
       },
       filter: function () {
         return this.filters
