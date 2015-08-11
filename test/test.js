@@ -7,10 +7,23 @@ var aolog = require('../index.js')(ipfs, BUCKET_SIZE)
 var _ = require('lodash')
 var async = require('async')
 
+var add_many = function (log, count, fn, cb) {
+  var i = 0
+  async.forever(function (next) {
+    if (!count--) return next(1)
+    var add = fn(i++)
+    log.append(add, function (err, res) {
+      if (err) throw err
+      log = res
+      next()
+    })
+  }, function () { cb(null, log) })
+}
+
 /* global describe, it, before */
 
 describe('logs', function () {
-  var log
+  var log, log2, log3, log4, log5
 
   log = aolog.empty()
 
@@ -18,31 +31,51 @@ describe('logs', function () {
     assert(log)
   })
 
-  var log2 = log.append(0)
+  before(function (done) {
+    log.append(0, function (err, res) {
+      if (err) throw err
+      log2 = res
+      done()
+    })
+  })
 
   it('should have an entry', function () {
     assert.equal(log2.elements[0], 0)
   })
 
-  var log3 = log2
-  for (var i = 0 ; i < BUCKET_SIZE ; i++) {
-    log3 = log3.append(i + 1)
-  }
+  before(function (done) {
+    add_many(log2, BUCKET_SIZE, function (i) { return i + 1 },
+             function (err, log) {
+               if (err) throw err
+               log3 = log
+               done()
+             })
+  })
 
   it('should have split', function () {
     assert.equal(log3.tail.ref.elements[0], BUCKET_SIZE)
   })
 
-  var log4 = log3.append(BUCKET_SIZE+1)
+  before(function (done) {
+    log3.append(BUCKET_SIZE+1, function (err, res) {
+      if (err) throw err
+      log4 = res
+      done()
+    })
+  })
 
   it('should have appended in head', function () {
     assert.equal(log4.tail.ref.elements[0], BUCKET_SIZE)
   })
 
-  var log5 = log4
-  for (var i = 0 ; i < BUCKET_SIZE-1 ; i++) {
-    log5 = log5.append(i + BUCKET_SIZE+2)
-  }
+  before(function (done) {
+    add_many(log4, BUCKET_SIZE -1, function (i) { return i + BUCKET_SIZE + 2 },
+             function (err, log) {
+               if (err) throw err
+               log5 = log
+               done()
+             })
+  })
 
   it('should have pushed a bucket down the middle!', function () {
     assert.equal(log5.rest.ref.refs[0].ref.elements[0], BUCKET_SIZE)
@@ -52,19 +85,26 @@ describe('logs', function () {
 describe('iterators', function () {
 
   describe('bucket iterator', function () {
-    var log = aolog.empty()
-
+    var log
     var expected = []
-    for (var i = 0 ; i < BUCKET_SIZE ; i++) {
-      log = log.append(i)
-      expected.push(i)
-    }
 
-    var iter = log.iterator()
+    before(function (done) {
+      add_many(aolog.empty(), BUCKET_SIZE,
+               function (i) {
+                 expected.push(i)
+                 return i
+               },
+               function (err, res) {
+                 if (err) throw err
+                 log = res
+                 done()
+               })
+    })
 
     var result = []
 
     before(function (done) {
+      var iter = log.iterator()
       async.forever(function (next) {
         iter.next(function (err, value, status) {
           if (err) throw (err)
@@ -82,15 +122,24 @@ describe('iterators', function () {
   })
 
   describe('finger iterator', function () {
-    var log = aolog.empty()
 
     var SIZE = BUCKET_SIZE * 8
+
+    var log
     var expected = []
 
-    for (var i = 0 ; i < SIZE ; i++) {
-      log = log.append(i)
-      expected.push(i)
-    }
+    before(function (done) {
+      add_many(aolog.empty(), SIZE,
+               function (i) {
+                 expected.push(i)
+                 return i
+               },
+               function (err, res) {
+                 if (err) throw err
+                 log = res
+                 done()
+               })
+    })
 
     var result = []
 
@@ -163,15 +212,22 @@ describe('iterators', function () {
   })
 
   describe('finger iterator reverse', function () {
-    var log = aolog.empty()
-
+    var log
     var SIZE = BUCKET_SIZE
     var expected = []
 
-    for (var i = 0 ; i < SIZE ; i++) {
-      log = log.append(i)
-      expected.unshift(i)
-    }
+    before(function (done) {
+      add_many(aolog.empty(), SIZE,
+               function (i) {
+                 expected.unshift(i)
+                 return i
+               },
+               function (err, res) {
+                 if (err) throw err
+                 log = res
+                 done()
+               })
+    })
 
     var result = []
 
@@ -247,109 +303,129 @@ describe('iterators', function () {
 
 describe('filters', function () {
 
-  var SIZE = 1000
-  var log = aolog.empty()
+  describe('fizzbuzz', function () {
 
-  var reference = []
+    var SIZE = 1000
+    var log
 
-  for (var i = 0 ; i < SIZE ; i++) {
-    var a = i % 3 == 0
-    var b = i % 5 == 0
-    var val
-    if (a && b) {
-      val = {msg: 'fizz buzz'}
-    } else if (a) {
-      val = {msg: 'fizz'}
-    } else if (b) {
-      val = {msg: 'buzz'}
-    } else {
-      val = {msg: i}
-    }
-    log = log.append(val)
-    reference.push(val)
-  }
+    var reference = []
 
-  var refcount = 0
-  _.forEach(reference, function (val) {
-    if (typeof val.msg === 'string' &&
-        val.msg.match('buzz')) refcount++
-  })
+    before(function (done) {
+      add_many(aolog.empty(), SIZE,
+               function (i) {
+                 var a = i % 3 == 0
+                 var b = i % 5 == 0
+                 var val
+                 if (a && b) {
+                   val = {msg: 'fizz buzz'}
+                 } else if (a) {
+                   val = {msg: 'fizz'}
+                 } else if (b) {
+                   val = {msg: 'buzz'}
+                 } else {
+                   val = {msg: i}
+                 }
+                 reference.push(val)
+                 return val
+               },
+               function (err, res) {
+                 if (err) throw err
+                 log = res
+                 done()
+               })
+    })
 
-  var count = 0
-  before(function (done) {
-    var iter = log.iterator({msg: 'buzz'})
-    async.forever(function (next) {
-      iter.next(function (err, value, status) {
-        if (err) throw (err)
-        if (status === aolog.eof) return next(1)
-        count++
-        if (!value.msg.match('buzz')) {
-          throw 'no buzz!'
-        }
-        next()
+    var refcount = 0
+
+    before(function (done) {
+      _.forEach(reference, function (val) {
+        if (typeof val.msg === 'string' &&
+            val.msg.match('buzz')) refcount++
       })
-    }, function () { done() })
+      done()
+    })
+
+    var count = 0
+    before(function (done) {
+      var iter = log.iterator({msg: 'buzz'})
+      async.forever(function (next) {
+        iter.next(function (err, value, status) {
+          if (err) throw (err)
+          if (status === aolog.eof) return next(1)
+          count++
+          if (!value.msg.match('buzz')) {
+            throw 'no buzz!'
+          }
+          next()
+        })
+      }, function () { done() })
+    })
+
+    it('should have found x elements', function () {
+      assert.equal(count, refcount)
+    })
+
   })
 
-  it('should have found x elements', function () {
-    assert.equal(count, refcount)
-  })
+  describe('haystack', function () {
 
-  var HAYSIZE = 10000
+    var HAYSIZE = 10000
 
-  var haystack = []
-  for (let i = 0 ; i < HAYSIZE ; i++) {
-    haystack.push({is: "haystrand #" + i})
-  }
-  haystack.push({is: "needle"})
-  haystack = _.shuffle(haystack)
-
-  var haylog = aolog.empty()
-
-  var oldfilter
-  for (let i = 0 ; i < HAYSIZE + 1 ; i++) {
-    haylog = haylog.append(haystack[i])
-    if (oldfilter) {
-      // should always contain old filter
-      if (!haylog.filter().is.contains(oldfilter)) {
-        throw 'new filter should contain old filter'
-      }
+    var haystack = []
+    for (let i = 0 ; i < HAYSIZE ; i++) {
+      haystack.push({is: "haystrand #" + i})
     }
-  }
+    haystack.push({is: "needle"})
+    haystack = _.shuffle(haystack)
 
-  it('should have only added to filter', function () {})
+    var result = []
+    var log
 
-  var result = []
-  var iter = haylog.iterator({is: 'needle'})
+    before(function (done) {
+      this.timeout(20000)
+      add_many(aolog.empty(), HAYSIZE + 1,
+               function (i) { return haystack[i] },
+               function (err, res) {
+                 if (err) throw err
+                 log = res
+                 done()
+               })
+    })
 
-  before(function (done) {
-    async.forever(function (next) {
-      iter.next(function (err, value, status) {
-        if (err) throw (err)
-        if (status === aolog.eof) return next(1)
+    before(function (done) {
+      var iter = log.iterator({is: 'needle'})
 
-        result.push(value)
-        next()
-      })
-    }, function () { done() })
-  })
+      async.forever(function (next) {
+        iter.next(function (err, value, status) {
+          if (err) throw (err)
+          if (status === aolog.eof) return next(1)
+          result.push(value)
+          next()
+        })
+      }, function () { done() })
+    })
 
-  it('should have found the needle', function () {
-    assert.equal(result.length, 1)
-    assert.deepEqual(result[0], {is: 'needle'})
+    it('should have found the needle', function () {
+      assert.equal(result.length, 1)
+      assert.deepEqual(result[0], {is: 'needle'})
+    })
   })
 })
 
 describe('persistance', function () {
   describe('persist bucket', function () {
 
-    var log = aolog.empty()
-
-    for (var i = 0 ; i < BUCKET_SIZE ; i++) {
-      log = log.append(i)
-    }
-
+    var log
     var hash
+
+    before(function (done) {
+      add_many(aolog.empty(), BUCKET_SIZE, function (i) { return i },
+               function (err, res) {
+                 if (err) throw err
+                 log = res
+                 done()
+               })
+    })
 
     before(function (done) {
       log.persist(function (err, res) {
@@ -415,21 +491,25 @@ describe('persistance', function () {
     })
   })
 
-
   describe('persist large tree', function () {
-
-    var log = aolog.empty()
 
     var SIZE = 10000
 
-    for (var i = 0 ; i < SIZE ; i++) {
-      log = log.append({is: "i = " + i})
-    }
-
+    var log
     var hash
 
     before(function (done) {
-      this.timeout(40000)
+      this.timeout(10000)
+      add_many(aolog.empty(), SIZE, function (i) { return { is: "i = " + i } },
+               function (err, res) {
+                 if (err) throw err
+                 log = res
+                 done()
+               })
+    })
+
+    before(function (done) {
+      this.timeout(10000)
       log.persist(function (err, res) {
         if (err) throw err
         hash = res.Hash
@@ -486,13 +566,18 @@ describe('persistance', function () {
 
   describe('persist filters', function () {
 
-    var log = aolog.empty()
-
+    var log
     var SIZE = BUCKET_SIZE * 32 + 1
 
-    for (var i = 0 ; i < SIZE ; i++) {
-      log = log.append({is: "i = " + i})
-    }
+    before(function (done) {
+      this.timeout(10000)
+      add_many(aolog.empty(), SIZE, function (i) { return { is: "i = " + i } },
+               function (err, res) {
+                 if (err) throw err
+                 log = res
+                 done()
+               })
+    })
 
     it('should have filters on all refs', function () {
       assert(log.head.filters.is)
@@ -544,6 +629,73 @@ describe('persistance', function () {
           log.rest.ref.head.ref.refs[i].filters.is.toString(),
           restored.rest.ref.head.ref.refs[i].filters.is.toString())
       }
+    })
+  })
+
+
+  describe('persist, restore, add, persist', function () {
+
+    var log
+    var SIZE = BUCKET_SIZE - 2
+
+    var expected = []
+
+    before(function (done) {
+      this.timeout(10000)
+      add_many(aolog.empty(), SIZE,
+               function (i) {
+                 var val = { is: "i = " + i }
+                 expected.push(val)
+                 return  val
+               },
+               function (err, res) {
+                 if (err) throw err
+                 log = res
+                 done()
+               })
+    })
+
+    var hash
+
+    before(function (done) {
+      log.persist(function (err, res) {
+        if (err) throw err
+        hash = res.Hash
+        done()
+      })
+    })
+
+    it('should have persisted', function () {
+      assert.equal(hash.substr(0, 2), 'Qm')
+    })
+
+    var restored, iterated
+    before(function (done) {
+      aolog.restore(hash, function (err, res) {
+        if (err) throw err
+        restored = res
+        done()
+      })
+    })
+
+    before(function (done) {
+      var val = {is: 'added after'}
+      expected.push(val)
+
+      restored = restored.append(val, function (err, res) {
+        if (err) throw err
+        res.iterator().all(function (err, res) {
+          if (err) throw err
+
+          iterated = res
+
+          done()
+        })
+      })
+    })
+
+    it('should have added to restored bucket', function () {
+      assert.deepEqual(expected, iterated)
     })
   })
 })

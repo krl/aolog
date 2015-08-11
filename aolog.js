@@ -68,8 +68,11 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       filters: filters || (pointsto && pointsto.filter()),
       ref: pointsto,
       hash: hash,
-      append: function (el) {
-        return new Ref(this.ref.append(el))
+      append: function (el, cb) {
+        this.ref.append(el, function (err, res) {
+          if (err) return cb(err)
+          cb(null, new Ref(res))
+        })
       },
       filter: function () {
         return this.filters
@@ -111,15 +114,15 @@ module.exports = function (ipfs, BUCKET_SIZE) {
     return {
       type: 'Bucket',
       elements: elements || [],
-      append: function (el) {
+      append: function (el, cb) {
         if (this.elements.length === BUCKET_SIZE) {
-          return new Finger(new Ref(new Bucket(this.elements)),
-                            new Ref(new Branch([])),
-                            new Ref(new Bucket([el])))
+          cb(null, new Finger(new Ref(new Bucket(this.elements)),
+                              new Ref(new Branch([])),
+                              new Ref(new Bucket([el]))))
         } else {
           var newelements = _.clone(this.elements)
           newelements.push(el)
-          return new Bucket(newelements)
+          cb(null, new Bucket(newelements))
         }
       },
       filter: function () {
@@ -219,15 +222,15 @@ module.exports = function (ipfs, BUCKET_SIZE) {
     return {
       type: 'Branch',
       refs: refs,
-      append: function (el) {
+      append: function (el, cb) {
         if (this.refs.length === BUCKET_SIZE) {
-          return new Finger(new Ref(new Branch(this.refs)),
-                            new Ref(new Branch([])),
-                            new Ref(new Branch([el])))
+          cb(null, new Finger(new Ref(new Branch(this.refs)),
+                              new Ref(new Branch([])),
+                              new Ref(new Branch([el]))))
         } else {
           var newrefs = _.clone(this.refs)
           newrefs.push(el)
-          return new Branch(newrefs)
+          cb(null, new Branch(newrefs))
         }
       },
       filter: function () {
@@ -297,20 +300,23 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       tail: tail,
       rest: rest,
       head: head,
-      append: function (el) {
-        var newtail = tail.append(el)
-        // did we split the child?
-        if (newtail.ref.tail) {
-          // yep
-          return new Finger(head,
-                            rest.append(newtail.ref.head),
-                            newtail.ref.tail)
-        } else {
-          // nope
-          return new Finger(head,
-                            rest,
-                            newtail)
-        }
+      append: function (el, cb) {
+        tail.append(el, function (err, newtail) {
+          if (err) return cb(err)
+          // did we split the child?
+          if (newtail.ref.tail) {
+            // yep
+            rest.append(newtail.ref.head, function (err, res) {
+              if (err) return cb(err)
+              cb(null, new Finger(head,
+                                  res,
+                                  newtail.ref.tail))
+            })
+          } else {
+            // nope
+            cb(null, new Finger(head, rest, newtail))
+          }
+        })
       },
       filter: function () {
         return combine([head, rest, tail])
