@@ -11,7 +11,7 @@ var add_many = function (log, count, fn, cb) {
   var i = 0
   async.forever(function (next) {
     if (!count--) return next(1)
-    var add = fn(i++)
+    var add = fn(i++, log)
     log.append(add, function (err, res) {
       if (err) throw err
       log = res
@@ -412,6 +412,21 @@ describe('filters', function () {
   })
 })
 
+describe('count', function () {
+  var SIZE = BUCKET_SIZE * 10
+  it('should have the correct count always', function (done) {
+    add_many(aolog.empty(), SIZE,
+             function (i, current) {
+               assert.equal(i, current.count)
+               return i
+             },
+             function (err, res) {
+               if (err) throw err
+               done()
+             })
+  })
+})
+
 describe('persistance', function () {
   describe('persist bucket', function () {
 
@@ -630,6 +645,35 @@ describe('persistance', function () {
           restored.rest.ref.head.ref.refs[i].filters.is.toString())
       }
     })
+  })
+
+  describe('persist count', function () {
+    var SIZE = BUCKET_SIZE * 10
+    var log, plog, nlog
+    before(function (done) {
+      add_many(aolog.empty(), SIZE, function (i) { return { is: "i = " + i } },
+               function (err, res) {
+                 if (err) throw err
+                 log = res
+                 done()
+               })
+    })
+
+    before(function (done) {
+      log.persist(function (err, persisted) {
+        if (err) throw err
+        aolog.restore(persisted.Hash, function (err, res) {
+          if (err) throw err
+          nlog = res
+          done()
+        })
+      })
+    })
+
+    it('should have persisted count', function () {
+      assert.equal(log.count, nlog.count)
+    })
+
   })
 
   describe('persist, restore, add, persist', function () {
