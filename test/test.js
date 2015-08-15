@@ -1,7 +1,7 @@
 'use strict'
 
 var assert = require('assert')
-var BUCKET_SIZE = 16
+var BUCKET_SIZE = 2
 var ipfs = require('ipfs-api')()
 var aolog = require('../index.js')(ipfs, BUCKET_SIZE)
 var _ = require('lodash')
@@ -123,7 +123,7 @@ describe('iterators', function () {
 
   describe('finger iterator', function () {
 
-    var SIZE = BUCKET_SIZE * 8
+    var SIZE = BUCKET_SIZE + 1
 
     var log
     var expected = []
@@ -209,11 +209,64 @@ describe('iterators', function () {
     it('should have taken all elements', function () {
       assert.deepEqual(resultAll, expected)
     })
+
+    var SIZE = BUCKET_SIZE * 64
+
+    var log
+    var reference = []
+
+    before(function (done) {
+      add_many(aolog.empty(), SIZE,
+               function (i) {
+                 reference.push(i)
+                 return i
+               },
+               function (err, res) {
+                 if (err) throw err
+                 log = res
+                 done()
+               })
+    })
+
+    // helper
+    function range (from, to) {
+      var arr = []
+      while (from != to) {
+        arr.push(from++)
+      }
+      return arr
+    }
+
+    it('should take all from all offsets', function (done) {
+      var count = 0
+
+      _.map(range(0, SIZE), function (ofs) {
+        var iter = log.iterator({offset: ofs})
+        count++
+        iter.all(function (err, array) {
+          if (err) throw err
+          assert.deepEqual(array, reference.slice(ofs))
+          if (!--count) done()
+        })
+      })
+    })
+
+    it('should take 1 from all offsets', function (done) {
+      var count = 0
+      _.map(range(0, SIZE), function (ofs) {
+        var iter = log.iterator({offset: ofs})
+        iter.next(function (err, res) {
+          if (err) throw err
+          assert.deepEqual(res, reference[ofs])
+          if (++count === SIZE) done()
+        })
+      })
+    })
   })
 
   describe('finger iterator reverse', function () {
     var log
-    var SIZE = BUCKET_SIZE
+    var SIZE = BUCKET_SIZE * 5
     var expected = []
 
     before(function (done) {
@@ -231,8 +284,8 @@ describe('iterators', function () {
 
     var result = []
 
-    before(function (done) {
-      var iter = log.reverseIterator()
+    it('should have gotten the right elements', function (done) {
+      var iter = log.iterator({reverse: true})
       async.forever(function (next) {
         iter.next(function (err, value, status) {
           if (err) throw (err)
@@ -241,19 +294,17 @@ describe('iterators', function () {
           result.push(value)
           next()
         })
-      }, function () { done() })
+      }, function () {
+        assert.deepEqual(expected, result)
+        done()
+      })
     })
-
-    it('should have gotten the right elements', function () {
-      assert.deepEqual(expected, result)
-    })
-
 
     var nr = Math.floor(SIZE/3)
     var resultPart = []
 
     before(function (done) {
-      var iter = log.reverseIterator()
+      var iter = log.iterator({reverse: true})
 
       iter.take(nr, function (err, array) {
         if (err) throw err
@@ -269,7 +320,7 @@ describe('iterators', function () {
     var resultTakeMore
 
     before(function (done) {
-      var iter = log.reverseIterator()
+      var iter = log.iterator({reverse: true})
 
       iter.take(SIZE * 2, function (err, array) {
         if (err) throw err
@@ -285,7 +336,7 @@ describe('iterators', function () {
 
     var resultAll = []
     before(function (done) {
-      var iter = log.reverseIterator()
+      var iter = log.iterator({reverse: true})
 
       iter.all(function (err, array) {
         if (err) throw err
@@ -347,12 +398,13 @@ describe('filters', function () {
 
     var count = 0
     before(function (done) {
-      var iter = log.iterator({msg: 'buzz'})
+      var iter = log.iterator({filter: {msg: 'buzz'}})
       async.forever(function (next) {
         iter.next(function (err, value, status) {
           if (err) throw (err)
           if (status === aolog.eof) return next(1)
           count++
+
           if (!value.msg.match('buzz')) {
             throw 'no buzz!'
           }
@@ -393,7 +445,7 @@ describe('filters', function () {
     })
 
     before(function (done) {
-      var iter = log.iterator({is: 'needle'})
+      var iter = log.iterator({filter: {is: 'needle'}})
 
       async.forever(function (next) {
         iter.next(function (err, value, status) {
@@ -508,13 +560,13 @@ describe('persistance', function () {
 
   describe('persist large tree', function () {
 
-    var SIZE = 10000
+    var SIZE = 1000
 
     var log
     var hash
 
     before(function (done) {
-      this.timeout(10000)
+      this.timeout(20000)
       add_many(aolog.empty(), SIZE, function (i) { return { is: "i = " + i } },
                function (err, res) {
                  if (err) throw err
@@ -524,7 +576,7 @@ describe('persistance', function () {
     })
 
     before(function (done) {
-      this.timeout(10000)
+      this.timeout(20000)
       log.persist(function (err, res) {
         if (err) throw err
         hash = res.Hash
