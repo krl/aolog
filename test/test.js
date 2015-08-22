@@ -210,7 +210,7 @@ describe('iterators', function () {
       assert.deepEqual(resultAll, expected)
     })
 
-    var SIZE = BUCKET_SIZE * 64
+    var SIZE = BUCKET_SIZE + 1
 
     var log
     var reference = []
@@ -227,6 +227,7 @@ describe('iterators', function () {
                  done()
                })
     })
+
 
     // helper
     function range (from, to) {
@@ -255,6 +256,34 @@ describe('iterators', function () {
       var count = 0
       _.map(range(0, SIZE), function (ofs) {
         var iter = log.iterator({offset: ofs})
+        iter.next(function (err, res) {
+          if (err) throw err
+          assert.deepEqual(res, reference[ofs])
+          if (++count === SIZE) done()
+        })
+      })
+    })
+
+    SIZE = BUCKET_SIZE * 10
+
+    it('should take all from all offsets in reverse', function (done) {
+      var count = 0
+
+      _.map(range(0, SIZE), function (ofs) {
+        var iter = log.iterator({offset: ofs, reverse: true})
+        count++
+        iter.all(function (err, array) {
+          if (err) throw err
+          assert.deepEqual(array, reference.slice(0, ofs+1).reverse())
+          if (!--count) done()
+        })
+      })
+    })
+
+    it('should take 1 from all offsets in reverse', function (done) {
+      var count = 0
+      _.map(range(0, SIZE), function (ofs) {
+        var iter = log.iterator({offset: ofs, reverse: true})
         iter.next(function (err, res) {
           if (err) throw err
           assert.deepEqual(res, reference[ofs])
@@ -424,7 +453,7 @@ describe('filters', function () {
     var HAYSIZE = 10000
 
     var haystack = []
-    for (let i = 0 ; i < HAYSIZE ; i++) {
+    for (var i = 0 ; i < HAYSIZE ; i++) {
       haystack.push({is: "haystrand #" + i})
     }
     haystack.push({is: "needle"})

@@ -16,23 +16,34 @@ module.exports = function (ipfs, BUCKET_SIZE) {
     if (!opts) opts = {}
     var reverse = opts.reverse ? true : false
     var fullfilter = makefilter(opts.filter)
-    var offset = opts.offset || 0
+    var def = reverse ? over.count - 1 : 0
+    var offset = (typeof opts.offset !== 'undefined' ? opts.offset : def)
 
     var stack = [{obj: over}]
+
+//    console.log('poing offset', offset)
 
     return {
       pushcount: 0,
       next: function (cb) {
         var self = this
 
-        if (!stack[0].idx) {
-          if (offset) {
+//        console.log('poinglol', stack[0].obj.type, stack[0].idx)
+
+        if (typeof stack[0].idx === 'undefined') {
+
+//          console.log('poingset', offset)
+
+          if (offset !== 'resolved') {
             var idxRest = stack[0].obj.offset(offset)
+//            console.log('poing', offset, idxRest)
             stack[0].idx = idxRest[0]
             offset = idxRest[1]
           } else {
-            stack[0].idx = reverse ? -1 : 0
+//            console.log('poing pappa')
+            stack[0].idx = reverse ? stack[0].obj.children -1 : 0
           }
+//          console.log('poing ...', stack[0].idx)
         }
 
         stack[0].obj.get(stack[0].idx, fullfilter, function (err, element, status) {
@@ -55,7 +66,8 @@ module.exports = function (ipfs, BUCKET_SIZE) {
             stack.unshift({obj: element})
             self.next(cb)
           } else { // leaf
-            // console.log('leaf')
+            offset = 'resolved'
+//            console.log('poing leaf', element)
             reverse ? stack[0].idx-- : stack[0].idx++
             cb(null, element)
           }
@@ -92,6 +104,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       filters: filters || (pointsto && pointsto.filter()),
       ref: pointsto,
       count: count,
+      children: 1,
       hash: hash,
       append: function (el, cb) {
         if (this.ref) {
@@ -118,7 +131,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       get: function (idx, filter, cb) {
         var self = this
 
-        if (idx === 0 || idx === -1) {
+        if (idx === 0) {
           if (!subsetMatches(self.filters, filter.blooms)) {
             cb(null, null, SKIP)
           } else if (self.ref) {
@@ -154,6 +167,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       type: 'Bucket',
       elements: elements || [],
       count: elements.length,
+      children: elements.length,
       append: function (el, cb) {
         if (this.elements.length === BUCKET_SIZE) {
           cb(null, new Finger(new Ref(new Bucket(this.elements)),
@@ -166,6 +180,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         }
       },
       offset: function (ofs) {
+//        console.log('poing bucket ofs', ofs)
         return [ofs, 0]
       },
       filter: function () {
@@ -182,11 +197,6 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         return filter
       },
       get: function (idx, filter, cb) {
-
-        if (idx < 0) {
-          idx += this.elements.length
-        }
-
         var el = this.elements[idx]
         if (typeof el === 'undefined') return cb(null, null, EOF)
 
@@ -228,6 +238,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       count: _.reduce(refs, function (a, b) {
         return a + b.count;
       }, 0),
+      children: refs.length,
       append: function (el, cb) {
         if (this.refs.length === BUCKET_SIZE) {
           cb(null, new Finger(new Ref(new Branch(this.refs)),
@@ -251,9 +262,6 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         return [idx, ofs]
       },
       get: function (idx, filter, cb) {
-        if (idx < 0) {
-          idx += this.refs.length
-        }
         var ref = this.refs[idx]
         if (ref) {
           cb(null, ref)
@@ -315,6 +323,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       rest: rest,
       head: head,
       count: head.count + rest.count + tail.count,
+      children: 3,
       append: function (el, cb) {
         tail.append(el, function (err, newtail) {
           if (err) return cb(err)
@@ -337,42 +346,32 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         return combine([head, rest, tail])
       },
       offset: function (ofs) {
-
-        // console.log('finger ofs')
-        // console.log(ofs)
-
-        // if (ofs < 0) {
-        //   ofs += this.count
-        // }
-
-        // console.log(this.count)
-        // console.log(ofs)
-
+//        console.log('finger ofs poing', ofs)
         var idx = 0
-        if (this.head.count < ofs) {
+        if (this.head.count <= ofs) {
           ofs -= this.head.count
           idx++
         } else {
           return [idx, ofs]
         }
 
-        if (this.rest.count < ofs) {
+        if (this.rest.count <= ofs) {
           ofs -= this.rest.count
           idx++
         } else {
           return [idx, ofs]
         }
 
-        if (this.tail.count < ofs) {
+        if (this.tail.count <= ofs) {
           ofs -= this.tail.count
           idx++
         }
         return [idx, ofs]
       },
       get: function (idx, filter, cb) {
-        if (idx === 0 || idx === -3) return cb(null, head)
-        if (idx === 1 || idx === -2) return cb(null, rest)
-        if (idx === 2 || idx === -1) return cb(null, tail)
+        if (idx === 0) return cb(null, head)
+        if (idx === 1) return cb(null, rest)
+        if (idx === 2) return cb(null, tail)
         cb(null, null, EOF)
       },
       iterator: function (opts) {
