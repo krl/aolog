@@ -14,60 +14,46 @@ module.exports = function (ipfs, BUCKET_SIZE) {
 
   var Iterator = function (over, opts) {
     if (!opts) opts = {}
-    var reverse = opts.reverse ? true : false
+    var reverse = !!opts.reverse
     var fullfilter = makefilter(opts.filter)
     var def = reverse ? over.count - 1 : 0
     var offset = (typeof opts.offset !== 'undefined' ? opts.offset : def)
 
     var stack = [{obj: over}]
 
-//    console.log('poing offset', offset)
-
     return {
       pushcount: 0,
       next: function (cb) {
         var self = this
 
-//        console.log('poinglol', stack[0].obj.type, stack[0].idx)
-
         if (typeof stack[0].idx === 'undefined') {
-
-//          console.log('poingset', offset)
-
           if (offset !== 'resolved') {
             var idxRest = stack[0].obj.offset(offset)
-//            console.log('poing', offset, idxRest)
             stack[0].idx = idxRest[0]
             offset = idxRest[1]
           } else {
-//            console.log('poing pappa')
-            stack[0].idx = reverse ? stack[0].obj.children -1 : 0
+            stack[0].idx = reverse ? stack[0].obj.children - 1 : 0
           }
-//          console.log('poing ...', stack[0].idx)
         }
 
         stack[0].obj.get(stack[0].idx, fullfilter, function (err, element, status) {
           if (err) return cb(err)
 
           if (status === EOF) {
-            // console.log('pop')
             stack.shift()
             // toplevel eof?
             if (stack.length === 0) return cb(null, null, EOF)
             reverse ? stack[0].idx-- : stack[0].idx++
             self.next(cb)
           } else if (status === SKIP) {
-            // console.log('skip')
             reverse ? stack[0].idx-- : stack[0].idx++
             self.next(cb)
           } else if (typeof element.get === 'function') {
-            // console.log('get')
             self.pushcount++
             stack.unshift({obj: element})
             self.next(cb)
           } else { // leaf
             offset = 'resolved'
-//            console.log('poing leaf', element)
             reverse ? stack[0].idx-- : stack[0].idx++
             cb(null, element)
           }
@@ -78,7 +64,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         var accum = []
         async.forever(function (next) {
           self.next(function (err, value, status) {
-            if (err) return cb(null, err)
+            if (err) return cb(err)
             if (status === EOF) return cb(null, accum)
             if (!nr--) return cb(null, accum)
             accum.push(value)
@@ -92,7 +78,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
     }
   }
 
-  var Ref = function (pointsto, hash, filters, count) {
+  var Ref = function (pointsto, persisted, filters, count) {
     if (typeof count === 'undefined') {
       count = pointsto.count
     } else {
@@ -105,7 +91,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       ref: pointsto,
       count: count,
       children: 1,
-      hash: hash,
+      persisted: persisted,
       append: function (el, cb) {
         if (this.ref) {
           this.ref.append(el, function (err, res) {
@@ -113,7 +99,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
             cb(null, new Ref(res))
           })
         } else {
-          restore(this.hash, function (err, restored) {
+          restore(this.persisted.Hash, function (err, restored) {
             if (err) return cb(err)
             restored.append(el, function (err, res) {
               if (err) return cb(err)
@@ -137,7 +123,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
           } else if (self.ref) {
             return cb(null, self.ref)
           } else {
-            restore(self.hash, function (err, res) {
+            restore(self.persisted.Hash, function (err, res) {
               if (err) return cb(err)
               self.ref = res
               self.get(idx, filter, cb)
@@ -150,12 +136,12 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       persist: function (cb) {
         var self = this
         if (self.persisted) {
-          cb(null, self.persisted, self.filters)
+          cb(null, self.persisted)
         } else {
           this.ref.persist(function (err, persisted) {
             if (err) return cb(err)
-            self.persisted = persisted.Hash
-            cb(null, persisted, self.filters)
+            self.persisted = persisted
+            cb(null, persisted)
           })
         }
       }
@@ -180,7 +166,6 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         }
       },
       offset: function (ofs) {
-//        console.log('poing bucket ofs', ofs)
         return [ofs, 0]
       },
       filter: function () {
@@ -223,8 +208,9 @@ module.exports = function (ipfs, BUCKET_SIZE) {
           if (err) return cb(err)
           ipfs.object.stat(put.Hash, function (err, stat) {
             if (err) return cb(err)
-            cb(null, {Hash: put.Hash,
-                      Size: stat.CumulativeSize})
+            self.persisted = {Hash: put.Hash,
+                              Size: stat.CumulativeSize}
+            cb(null, self.persisted)
           })
         })
       }
@@ -236,7 +222,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       type: 'Branch',
       refs: refs,
       count: _.reduce(refs, function (a, b) {
-        return a + b.count;
+        return a + b.count
       }, 0),
       children: refs.length,
       append: function (el, cb) {
@@ -307,8 +293,9 @@ module.exports = function (ipfs, BUCKET_SIZE) {
             if (err) return cb(err)
             ipfs.object.stat(put.Hash, function (err, stat) {
               if (err) return cb(err)
-              cb(null, {Hash: put.Hash,
-                        Size: stat.CumulativeSize})
+              self.persisted = { Hash: put.Hash,
+                                 Size: stat.CumulativeSize }
+              cb(null, self.persisted)
             })
           })
         })
@@ -346,7 +333,6 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         return combine([head, rest, tail])
       },
       offset: function (ofs) {
-//        console.log('finger ofs poing', ofs)
         var idx = 0
         if (this.head.count <= ofs) {
           ofs -= this.head.count
@@ -412,8 +398,9 @@ module.exports = function (ipfs, BUCKET_SIZE) {
             if (err) return cb(err)
             ipfs.object.stat(put.Hash, function (err, stat) {
               if (err) return cb(err)
-              cb(null, {Hash: put.Hash,
-                        Size: stat.CumulativeSize})
+              self.persisted = { Hash: put.Hash,
+                                 Size: stat.CumulativeSize }
+              cb(null, self.persisted)
             })
           })
         })
@@ -518,25 +505,29 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       } else if (object.type === 'Branch') {
         cb(null, new Branch(_.map(res.Links, function (link, idx) {
           return new Ref(null,
-                         link.Hash,
+                         { Hash: link.Hash,
+                           Size: link.Size },
                          deserialize_filters(object.filters[zeropad(idx)]),
                          object.counts[zeropad(idx)])
         })))
       } else if (object.type === 'Finger') {
         var linkmap = {}
         _.forEach(res.Links, function (link) {
-          linkmap[link.Name] = link.Hash
+          linkmap[link.Name] = link
         })
         cb(null, new Finger(new Ref(null,
-                                    linkmap.head,
+                                    { Hash: linkmap.head.Hash,
+                                      Size: linkmap.head.Size },
                                     deserialize_filters(object.filters.head),
                                     object.counts.head),
                             new Ref(null,
-                                    linkmap.rest,
+                                    { Hash: linkmap.rest.Hash,
+                                      Size: linkmap.rest.Size },
                                     deserialize_filters(object.filters.rest),
                                     object.counts.rest),
                             new Ref(null,
-                                    linkmap.tail,
+                                    { Hash: linkmap.tail.Hash,
+                                      Size: linkmap.tail.Size },
                                     deserialize_filters(object.filters.tail),
                                     object.counts.tail)))
       }
