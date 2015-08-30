@@ -1776,63 +1776,69 @@ module.exports = function (ipfs, BUCKET_SIZE) {
 (function (Buffer){
 var FNV = require('fnv').FNV
 
-var Blomma = function (bytes, rounds) {
+var Blomma = function (size, rounds) {
   var indicies = function (value) {
     var hash = new FNV()
     var idx = []
 
     for (var i = 0 ; i < rounds ; i++) {
       hash.update(value)
-      idx.push(parseInt(hash.digest('hex'), 16) % (bytes * 8))
+      idx.push(parseInt(hash.digest('hex'), 16) % (size * 8))
       value = '\0'
     }
     return idx
   }
 
-  var extend = function (buffer) {
-    buffer.add = function (value) {
+  var Filter = function (data) {
+    this.buffer = new Buffer(size)
+    this.buffer.fill(0)
+  }
+
+  Filter.prototype = {
+    add: function (value) {
       var idx = indicies(value)
       for (var i = 0 ; i < rounds ; i++) {
         var bit = idx[i]
-        buffer[bit >> 3] |= (1 << (bit % 8))
+        this.buffer[bit >> 3] |= (1 << (bit % 8))
       }
-    }
-    buffer.has = function (value) {
+    },
+    has: function (value) {
       var idx = indicies(value)
       for (var i = 0 ; i < rounds ; i++) {
         var bit = idx[i]
-        if (!(buffer[bit >> 3] & (1 << (bit % 8)))) {
+        if (!(this.buffer[bit >> 3] & (1 << (bit % 8)))) {
+          return false
+        }
+      }
+      return true
+    },
+    contains: function (subset) {
+      for (var i = 0 ; i < size ; i++) {
+        if ((this.buffer[i] & subset.buffer[i]) !== subset.buffer[i]) {
           return false
         }
       }
       return true
     }
-    buffer.contains = function (subset) {
-      for (var i = 0 ; i < bytes ; i++) {
-        if ((this[i] & subset[i]) !== subset[i]) {
-          return false
-        }
-      }
-      return true
-    }
-    return buffer
   }
 
   return {
     empty: function () {
-      var buf = new Buffer(bytes)
-      buf.fill(0)
-      return extend(buf)
+      return new Filter(size)
     },
     merge: function (a, b) {
-      var buf = new Buffer(bytes)
-      for (var i = 0 ; i < bytes ; i++) {
-        buf[i] = a[i] | b[i]
+      var filter = new Filter()
+      for (var i = 0 ; i < size ; i++) {
+        filter.buffer[i] = a.buffer[i] | b.buffer[i]
       }
-      return extend(buf)
+      return filter
     },
-    clone: function (filter) {
-      return extend(new Buffer(filter))
+    clone: function (toclone) {
+      var filter = new Filter()
+      for (var i = 0 ; i < size ; i++) {
+        filter.buffer[i] = toclone.buffer[i]
+      }
+      return filter
     }
   }
 }
@@ -2504,20 +2510,99 @@ function base64Slice (buf, start, end) {
 }
 
 function utf8Slice (buf, start, end) {
-  var res = ''
-  var tmp = ''
   end = Math.min(buf.length, end)
+  var res = []
 
-  for (var i = start; i < end; i++) {
-    if (buf[i] <= 0x7F) {
-      res += decodeUtf8Char(tmp) + String.fromCharCode(buf[i])
-      tmp = ''
-    } else {
-      tmp += '%' + buf[i].toString(16)
+  var i = start
+  while (i < end) {
+    var firstByte = buf[i]
+    var codePoint = null
+    var bytesPerSequence = (firstByte > 0xEF) ? 4
+      : (firstByte > 0xDF) ? 3
+      : (firstByte > 0xBF) ? 2
+      : 1
+
+    if (i + bytesPerSequence <= end) {
+      var secondByte, thirdByte, fourthByte, tempCodePoint
+
+      switch (bytesPerSequence) {
+        case 1:
+          if (firstByte < 0x80) {
+            codePoint = firstByte
+          }
+          break
+        case 2:
+          secondByte = buf[i + 1]
+          if ((secondByte & 0xC0) === 0x80) {
+            tempCodePoint = (firstByte & 0x1F) << 0x6 | (secondByte & 0x3F)
+            if (tempCodePoint > 0x7F) {
+              codePoint = tempCodePoint
+            }
+          }
+          break
+        case 3:
+          secondByte = buf[i + 1]
+          thirdByte = buf[i + 2]
+          if ((secondByte & 0xC0) === 0x80 && (thirdByte & 0xC0) === 0x80) {
+            tempCodePoint = (firstByte & 0xF) << 0xC | (secondByte & 0x3F) << 0x6 | (thirdByte & 0x3F)
+            if (tempCodePoint > 0x7FF && (tempCodePoint < 0xD800 || tempCodePoint > 0xDFFF)) {
+              codePoint = tempCodePoint
+            }
+          }
+          break
+        case 4:
+          secondByte = buf[i + 1]
+          thirdByte = buf[i + 2]
+          fourthByte = buf[i + 3]
+          if ((secondByte & 0xC0) === 0x80 && (thirdByte & 0xC0) === 0x80 && (fourthByte & 0xC0) === 0x80) {
+            tempCodePoint = (firstByte & 0xF) << 0x12 | (secondByte & 0x3F) << 0xC | (thirdByte & 0x3F) << 0x6 | (fourthByte & 0x3F)
+            if (tempCodePoint > 0xFFFF && tempCodePoint < 0x110000) {
+              codePoint = tempCodePoint
+            }
+          }
+      }
     }
+
+    if (codePoint === null) {
+      // we did not generate a valid codePoint so insert a
+      // replacement char (U+FFFD) and advance only 1 byte
+      codePoint = 0xFFFD
+      bytesPerSequence = 1
+    } else if (codePoint > 0xFFFF) {
+      // encode to utf16 (surrogate pair dance)
+      codePoint -= 0x10000
+      res.push(codePoint >>> 10 & 0x3FF | 0xD800)
+      codePoint = 0xDC00 | codePoint & 0x3FF
+    }
+
+    res.push(codePoint)
+    i += bytesPerSequence
   }
 
-  return res + decodeUtf8Char(tmp)
+  return decodeCodePointsArray(res)
+}
+
+// Based on http://stackoverflow.com/a/22747272/680742, the browser with
+// the lowest limit is Chrome, with 0x10000 args.
+// We go 1 magnitude less, for safety
+var MAX_ARGUMENTS_LENGTH = 0x1000
+
+function decodeCodePointsArray (codePoints) {
+  var len = codePoints.length
+  if (len <= MAX_ARGUMENTS_LENGTH) {
+    return String.fromCharCode.apply(String, codePoints) // avoid extra slice()
+  }
+
+  // Decode in chunks to avoid "call stack size exceeded".
+  var res = ''
+  var i = 0
+  while (i < len) {
+    res += String.fromCharCode.apply(
+      String,
+      codePoints.slice(i, i += MAX_ARGUMENTS_LENGTH)
+    )
+  }
+  return res
 }
 
 function asciiSlice (buf, start, end) {
@@ -3223,28 +3308,15 @@ function utf8ToBytes (string, units) {
   var length = string.length
   var leadSurrogate = null
   var bytes = []
-  var i = 0
 
-  for (; i < length; i++) {
+  for (var i = 0; i < length; i++) {
     codePoint = string.charCodeAt(i)
 
     // is surrogate component
     if (codePoint > 0xD7FF && codePoint < 0xE000) {
       // last char was a lead
-      if (leadSurrogate) {
-        // 2 leads in a row
-        if (codePoint < 0xDC00) {
-          if ((units -= 3) > -1) bytes.push(0xEF, 0xBF, 0xBD)
-          leadSurrogate = codePoint
-          continue
-        } else {
-          // valid surrogate pair
-          codePoint = leadSurrogate - 0xD800 << 10 | codePoint - 0xDC00 | 0x10000
-          leadSurrogate = null
-        }
-      } else {
+      if (!leadSurrogate) {
         // no lead yet
-
         if (codePoint > 0xDBFF) {
           // unexpected trail
           if ((units -= 3) > -1) bytes.push(0xEF, 0xBF, 0xBD)
@@ -3253,17 +3325,29 @@ function utf8ToBytes (string, units) {
           // unpaired lead
           if ((units -= 3) > -1) bytes.push(0xEF, 0xBF, 0xBD)
           continue
-        } else {
-          // valid lead
-          leadSurrogate = codePoint
-          continue
         }
+
+        // valid lead
+        leadSurrogate = codePoint
+
+        continue
       }
+
+      // 2 leads in a row
+      if (codePoint < 0xDC00) {
+        if ((units -= 3) > -1) bytes.push(0xEF, 0xBF, 0xBD)
+        leadSurrogate = codePoint
+        continue
+      }
+
+      // valid surrogate pair
+      codePoint = leadSurrogate - 0xD800 << 10 | codePoint - 0xDC00 | 0x10000
     } else if (leadSurrogate) {
       // valid bmp char, but last char was a lead
       if ((units -= 3) > -1) bytes.push(0xEF, 0xBF, 0xBD)
-      leadSurrogate = null
     }
+
+    leadSurrogate = null
 
     // encode utf8
     if (codePoint < 0x80) {
@@ -3282,7 +3366,7 @@ function utf8ToBytes (string, units) {
         codePoint >> 0x6 & 0x3F | 0x80,
         codePoint & 0x3F | 0x80
       )
-    } else if (codePoint < 0x200000) {
+    } else if (codePoint < 0x110000) {
       if ((units -= 4) < 0) break
       bytes.push(
         codePoint >> 0x12 | 0xF0,
@@ -3333,14 +3417,6 @@ function blitBuffer (src, dst, offset, length) {
     dst[i + offset] = src[i]
   }
   return i
-}
-
-function decodeUtf8Char (str) {
-  try {
-    return decodeURIComponent(str)
-  } catch (err) {
-    return String.fromCharCode(0xFFFD) // UTF 8 invalid char
-  }
 }
 
 },{"base64-js":6,"ieee754":7,"is-array":8}],6:[function(require,module,exports){
