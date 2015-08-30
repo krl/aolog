@@ -134,6 +134,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         }
       },
       persist: function (cb) {
+        //console.log('persist ref')
         var self = this
         if (self.persisted) {
           cb(null, self.persisted)
@@ -170,12 +171,13 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       },
       filter: function () {
         var filter = {}
-        // else create new filters
         _.forEach(this.elements, function (element) {
           _.forEach(element, function (value, key) {
             if (typeof value === 'string') {
               if (!filter[key]) filter[key] = bloom.empty()
-              _.forEach(splitWords(value), filter[key].add)
+              _.forEach(splitWords(value), function (word) {
+                filter[key].add(word)
+              })
             }
           })
         })
@@ -195,6 +197,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         return new Iterator(this, opts)
       },
       persist: function (cb) {
+        //console.log('persist bucket')
         var self = this
 
         var buf = new Buffer(JSON.stringify({
@@ -204,8 +207,10 @@ module.exports = function (ipfs, BUCKET_SIZE) {
           }),
           Links: []
         }))
+
         ipfs.object.put(buf, 'json', function (err, put) {
           if (err) return cb(err)
+
           ipfs.object.stat(put.Hash, function (err, stat) {
             if (err) return cb(err)
             self.persisted = {Hash: put.Hash,
@@ -259,6 +264,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         return new Iterator(this, opts)
       },
       persist: function (cb) {
+        //console.log('persist branch')
         var self = this
         var filters = {}
         var counts = {}
@@ -364,6 +370,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         return new Iterator(this, opts)
       },
       persist: function (cb) {
+        //console.log('persist finger')
         var self = this
         var filters = {}
         var counts = {}
@@ -410,9 +417,9 @@ module.exports = function (ipfs, BUCKET_SIZE) {
 
   var serialize_filters = function (filters) {
     var serialized = {}
-
     _.forEach(filters, function (value, key) {
-      serialized[key] = new Buffer(pako.deflate(filters[key])).toString('base64')
+      var compressed = new Buffer(pako.deflate(filters[key].buffer)).toString('base64')
+      serialized[key] = compressed
     })
     return serialized
   }
@@ -420,9 +427,10 @@ module.exports = function (ipfs, BUCKET_SIZE) {
   var deserialize_filters = function (filters) {
     var deserialized = {}
     _.forEach(filters, function (value, key) {
-      deserialized[key] = new Buffer(
+      var buffer = new Buffer(
         pako.inflate(new Buffer(filters[key], 'base64')),
         'base64')
+      deserialized[key] = bloom.fromBuffer(buffer)
     })
     return deserialized
   }
@@ -438,7 +446,9 @@ module.exports = function (ipfs, BUCKET_SIZE) {
 
     _.forEach(filter, function (value, key) {
       blooms[key] = bloom.empty()
-      _.forEach(splitWords(value), blooms[key].add)
+      _.forEach(splitWords(value), function (word) {
+        blooms[key].add(word)
+      })
     })
 
     return {words: filter,
