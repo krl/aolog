@@ -1,194 +1,70 @@
 'use strict'
 
-// var persistances = 0
-
 var _ = require('lodash')
 var bloom = require('blomma')(1024, 1)
 var async = require('async')
 var pako = require('pako')
 
-var EOF = 0
-var SKIP = 1
-
 module.exports = function (ipfs, BUCKET_SIZE) {
 
-  var Iterator = function (over, opts) {
-    if (!opts) opts = {}
-    var reverse = !!opts.reverse
-    var fullfilter = makefilter(opts.filter)
-    var def = reverse ? over.count - 1 : 0
-    var offset = (typeof opts.offset !== 'undefined' ? opts.offset : def)
-    var index = offset
-
-    var stack = [{obj: over}]
-
-    return {
-      pushcount: 0,
-      next: function (cb) {
-        var self = this
-
-        if (stack.length === 0) {
-          return cb(null, { eof: true })
-        }
-
-        if (typeof stack[0].idx === 'undefined') {
-          if (offset !== 'resolved') {
-            var idxRest = stack[0].obj.offset(offset)
-            stack[0].idx = idxRest[0]
-            offset = idxRest[1]
-          } else {
-            stack[0].idx = reverse ? stack[0].obj.children - 1 : 0
-          }
-        }
-
-        stack[0].obj.get(stack[0].idx, fullfilter, function (err, res) {
-                           if (err) return cb(err)
-
-                           if (res.eof) {
-                             stack.shift()
-                             if (!stack[0]) return cb(null, { eof: true })
-                             reverse ? stack[0].idx-- : stack[0].idx++
-                             self.next(cb)
-                           } else if (res.skip) {
-                             reverse ? stack[0].idx-- : stack[0].idx++
-                             reverse ? index -= res.skip : index += res.skip
-                             self.next(cb)
-                           } else if (res.push) {
-                             self.pushcount++
-                             stack.unshift({obj: res.push})
-                             self.next(cb)
-                           } else if (typeof res.element !== 'undefined') {
-                             offset = 'resolved'
-                             reverse ? stack[0].idx-- : stack[0].idx++
-                             cb(null, {
-                               element: res.element,
-                               index: reverse ? index-- : index++
-                             })
-                           }
-                         })
-      },
-      take: function (nr, cb) {
-        var self = this
-        var accum = []
-        async.forever(function (next) {
-          self.next(function (err, res) {
-            if (err) return cb(err)
-            if (res.eof) return cb(null, accum)
-            if (!nr--) return cb(null, accum)
-            accum.push(res)
-            next()
-          })
-        })
-      },
-      all: function (cb) {
-        this.take(Infinity, cb)
-      }
-    }
-  }
-
-  var Ref = function (pointsto, persisted, filters, count) {
-    if (typeof count === 'undefined') {
-      count = pointsto.count
-    } else {
-      count = count
-    }
-
+  var Ref = function (ref, filters, count) {
     return {
       type: 'Ref',
-      filters: filters || (pointsto && pointsto.filter()),
-      ref: pointsto,
+      filters: filters,
+      ref: ref,
       count: count,
       children: 1,
-      persisted: persisted,
       append: function (el, cb) {
-        if (this.ref) {
-          this.ref.append(el, function (err, res) {
+        restore(this.ref.Hash, function (err, restored) {
+          if (err) return cb(err)
+          restored.append(el, function (err, res) {
             if (err) return cb(err)
-            cb(null, new Ref(res))
+            cb(null, res)
           })
-        } else {
-          restore(this.persisted.Hash, function (err, restored) {
-            if (err) return cb(err)
-            restored.append(el, function (err, res) {
-              if (err) return cb(err)
-              cb(null, new Ref(res))
-            })
-          })
-        }
-      },
-      filter: function () {
-        return this.filters
+        })
       },
       offset: function (ofs) {
         return [0, ofs]
       },
+      getOffset: function () {
+        return 0
+      },
       get: function (idx, filter, cb) {
         var self = this
 
-        if (idx === 0) {
-          if (!subsetMatches(self.filters, filter.blooms)) {
-            cb(null, { skip: self.count })
-          } else if (self.ref) {
-            return cb(null, { push: self.ref })
-          } else {
-            restore(self.persisted.Hash, function (err, res) {
-              if (err) return cb(err)
-              self.ref = res
-              self.get(idx, filter, cb)
-            })
-          }
-        } else {
-          cb(null, { eof: true })
-        }
+        restore(self.ref.Hash, function (err, res) {
+          if (err) return cb(err)
+          cb(null, { restored: res })
+        })
       },
       persist: function (cb) {
-        var self = this
-        if (self.persisted) {
-          cb(null, self.persisted)
-        } else {
-          this.ref.persist(function (err, persisted) {
-            if (err) return cb(err)
-            self.persisted = persisted
-            cb(null, persisted)
-          })
-        }
+        return cb(null, this.ref)
       }
     }
   }
 
-  var Bucket = function (elements, filters) {
+  var Bucket = function (elements) {
     return {
       type: 'Bucket',
       elements: elements || [],
       count: elements.length,
       children: elements.length,
+      filters: elementFilters(elements),
       append: function (el, cb) {
         if (this.elements.length === BUCKET_SIZE) {
-          cb(null, new Finger(new Ref(new Bucket(this.elements)),
-                              new Ref(new Branch([])),
-                              new Ref(new Bucket([el]))))
+          cb(null, { split: [ new Bucket(this.elements),
+                              new Bucket([el]) ] })
         } else {
           var newelements = _.clone(this.elements)
           newelements.push(el)
-          cb(null, new Bucket(newelements))
+          cb(null, { value: new Bucket(newelements) })
         }
       },
       offset: function (ofs) {
         return [ofs, 0]
       },
-      filter: function () {
-        var filter = {}
-        _.forEach(this.elements, function (element) {
-          _.forEach(element, function (value, key) {
-            if (typeof value === 'string') {
-              if (!filter[key]) filter[key] = bloom.empty()
-              _.forEach(splitWords(value), function (word) {
-                filter[key].add(word)
-              })
-            }
-          })
-        })
-        return filter
+      getOffset: function (idx) {
+        return idx
       },
       get: function (idx, filter, cb) {
         var el = this.elements[idx]
@@ -197,14 +73,13 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         if (matches(el, filter.words)) {
           return cb(null, { element: el })
         } else {
-          return cb(null, { skip: 1 })
+          return cb(null, { skip: true })
         }
-      },
-      iterator: function (opts) {
-        return new Iterator(this, opts)
       },
       persist: function (cb) {
         var self = this
+
+        if (self.persisted) return cb(null, self.persisted)
 
         var buf = new Buffer(JSON.stringify({
           Data: JSON.stringify({
@@ -219,8 +94,8 @@ module.exports = function (ipfs, BUCKET_SIZE) {
 
           ipfs.object.stat(put.Hash, function (err, stat) {
             if (err) return cb(err)
-            self.persisted = {Hash: put.Hash,
-                              Size: stat.CumulativeSize}
+            self.persisted = { Hash: put.Hash,
+                               Size: stat.CumulativeSize}
             cb(null, self.persisted)
           })
         })
@@ -228,57 +103,66 @@ module.exports = function (ipfs, BUCKET_SIZE) {
     }
   }
 
-  var Branch = function (refs, filters) {
+  var Branch = function (elements) {
     return {
       type: 'Branch',
-      refs: refs,
-      count: _.reduce(refs, function (a, b) {
+      elements: elements,
+      count: _.reduce(elements, function (a, b) {
         return a + b.count
       }, 0),
-      children: refs.length,
+      children: elements.length,
+      filters: combineFilters(this.elements),
       append: function (el, cb) {
-        if (this.refs.length === BUCKET_SIZE) {
-          cb(null, new Finger(new Ref(new Branch(this.refs)),
-                              new Ref(new Branch([])),
-                              new Ref(new Branch([el]))))
+        if (this.elements.length === BUCKET_SIZE) {
+          cb(null, { split: [ new Branch(this.elements),
+                              new Branch([el]) ]})
         } else {
-          var newrefs = _.clone(this.refs)
-          newrefs.push(el)
-          cb(null, new Branch(newrefs))
+          var newelements = _.clone(this.elements)
+          newelements.push(el)
+          cb(null, { value: new Branch(newelements) })
         }
-      },
-      filter: function () {
-        return combine(this.refs)
       },
       offset: function (ofs) {
         var idx = 0
-        while (this.refs[(idx + 1)] && this.refs[idx].count <= ofs) {
-          ofs -= this.refs[idx].count
+        while (this.elements[(idx + 1)] && this.elements[idx].count <= ofs) {
+          ofs -= this.elements[idx].count
           idx++
         }
         return [idx, ofs]
       },
+      getOffset: function (idx) {
+        var count = 0
+        for (var i = 0 ; i < idx ; i++ ) {
+          count += this.elements[i].count
+        }
+        return count
+      },
       get: function (idx, filter, cb) {
-        var ref = this.refs[idx]
-        if (ref) {
-          cb(null, { push: ref })
+        var element = this.elements[idx]
+
+        if (element) {
+          if (!subsetMatches(element.filters, filter.blooms)) {
+            cb(null, { skip: true })
+          } else {
+            cb(null, { push: element })
+          }
         } else {
           cb(null, { eof: true })
         }
       },
-      iterator: function (opts) {
-        return new Iterator(this, opts)
-      },
       persist: function (cb) {
         var self = this
+
+        if (self.persisted) return cb(null, self.persisted)
+
         var filters = {}
         var counts = {}
-        async.series(_.map(self.refs, function (ref, idx) {
+        async.series(_.map(self.elements, function (element, idx) {
           var name = zeropad(idx)
-          filters[name] = serialize_filters(self.refs[idx].filters)
-          counts[name] = self.refs[idx].count
+          filters[name] = serializeFilters(self.elements[idx].filters)
+          counts[name] = self.elements[idx].count
           return function (done) {
-            ref.persist(function (err, persisted) {
+            element.persist(function (err, persisted) {
               if (err) return done(err)
               done(null, {
                 Name: name,
@@ -314,78 +198,86 @@ module.exports = function (ipfs, BUCKET_SIZE) {
     }
   }
 
-  var Finger = function (head, rest, tail) {
+  var Finger = function (elements) {
     return {
       type: 'Finger',
-      tail: tail,
-      rest: rest,
-      head: head,
-      count: head.count + rest.count + tail.count,
+      elements: elements,
+      count: _.reduce(elements, function (a, b) {
+        return a + b.count
+      }, 0),
       children: 3,
       append: function (el, cb) {
-        tail.append(el, function (err, newtail) {
+
+        var self = this
+        var tail = 2
+        var newelements = _.clone(self.elements)
+        elements[tail].append(el, function (err, res) {
           if (err) return cb(err)
-          // did we split the child?
-          if (newtail.ref.tail) {
-            // yep
-            rest.append(newtail.ref.head, function (err, res) {
+          if (res.split) {
+            // push first down the middle
+            newelements[2] = res.split[1]
+            elements[1].append(res.split[0], function (err, pushres) {
               if (err) return cb(err)
-              cb(null, new Finger(head,
-                                  res,
-                                  newtail.ref.tail))
+              if (pushres.split) {
+                newelements[1] = new Finger([ pushres.split[0],
+                                              new Branch([]),
+                                              pushres.split[1] ])
+              } else {
+                newelements[1] = pushres.value
+              }
+
+              cb(null, { value: new Finger(newelements)} )
             })
           } else {
-            // nope
-            cb(null, new Finger(head, rest, newtail))
+            newelements[2] = res.value
+            cb(null, { value: new Finger(newelements)} )
           }
         })
       },
-      filter: function () {
-        return combine([head, rest, tail])
-      },
       offset: function (ofs) {
         var idx = 0
-        if (this.head.count <= ofs) {
-          ofs -= this.head.count
-          idx++
-        } else {
-          return [idx, ofs]
-        }
-
-        if (this.rest.count <= ofs) {
-          ofs -= this.rest.count
-          idx++
-        } else {
-          return [idx, ofs]
-        }
-
-        if (this.tail.count <= ofs) {
-          ofs -= this.tail.count
+        while (this.elements[(idx + 1)] && this.elements[idx].count <= ofs) {
+          ofs -= this.elements[idx].count
           idx++
         }
         return [idx, ofs]
       },
-      get: function (idx, filter, cb) {
-        if (idx === 0) return cb(null, { push: head })
-        if (idx === 1) return cb(null, { push: rest })
-        if (idx === 2) return cb(null, { push: tail })
-        cb(null, { eof: true})
+      getOffset: function (idx) {
+        var count = 0
+        for (var i = 0 ; i < idx ; i++ ) {
+          count += this.elements[i].count
+        }
+        return count
       },
-      iterator: function (opts) {
-        return new Iterator(this, opts)
+      get: function (idx, filter, cb) {
+        var element = this.elements[idx]
+        if (element) {
+          if (!subsetMatches(element.filters, filter.blooms)) {
+            cb(null, { skip: true })
+          } else {
+            cb(null, { push: element })
+          }
+        } else {
+          cb(null, { eof: true })
+        }
       },
       persist: function (cb) {
         var self = this
+
+        if (self.persisted) return cb(null, self.persisted)
+
         var filters = {}
         var counts = {}
-        async.series(_.map(['head', 'rest', 'tail'], function (part) {
-          filters[part] = serialize_filters(self[part].filters)
-          counts[part] = self[part].count
+        var parts = ['head', 'rest', 'tail']
+        async.series(_.map(self.elements, function (element, idx) {
+          var name = parts[idx]
+          filters[name] = serializeFilters(self.elements[idx].filters)
+          counts[name] = self.elements[idx].count
           return function (done) {
-            self[part].persist(function (err, persisted) {
+            self.elements[idx].persist(function (err, persisted) {
               if (err) return done(err)
               done(null, {
-                Name: part,
+                Name: name,
                 Hash: persisted.Hash,
                 Size: persisted.Size
               })
@@ -419,7 +311,158 @@ module.exports = function (ipfs, BUCKET_SIZE) {
     }
   }
 
-  var serialize_filters = function (filters) {
+  var Root = function (ref) {
+    if (!ref) ref = new Bucket([])
+
+    return {
+      type: 'Root',
+      ref: ref,
+      count: ref.count,
+      append: function (el, cb) {
+        this.ref.append(el, function (err, res) {
+          if (err) return cb(err)
+          if (res.split) {
+            var newelements = []
+            newelements[0] = res.split[0]
+            newelements[1] = new Branch([])
+            newelements[2] = res.split[1]
+            cb(null, new Root(new Finger(newelements)))
+          } else {
+            cb(null, new Root(res.value))
+          }
+        })
+      },
+      iterator: function (opts) {
+        return new Iterator(this.ref, opts)
+      },
+      persist: function (cb) {
+        ref.persist(cb)
+      }
+    }
+  }
+
+  var Iterator = function (over, opts) {
+    if (!opts) opts = {}
+    var reverse = !!opts.reverse
+    var fullfilter = makefilter(opts.filter)
+    var def = reverse ? over.count - 1 : 0
+    var offset = (typeof opts.offset !== 'undefined' ? opts.offset : def)
+    var stack = null
+
+    return {
+      pushcount: 0,
+      next: function (cb) {
+        var self = this
+
+        // initialize stack
+        if (!stack) {
+          stackFromOffset(over, offset, function (err, newstack) {
+            if (err) return cb(err)
+            stack = newstack
+            self.next(cb)
+          })
+          return
+        }
+
+        stack[0].obj.get(stack[0].idx, fullfilter, function (err, res) {
+          if (err) return cb(err)
+
+          if (res.eof) {
+            stack.shift()
+            if (!stack[0]) return cb(null, { eof: true })
+            reverse ? stack[0].idx-- : stack[0].idx++
+            self.next(cb)
+          } else if (res.skip) {
+            reverse ? stack[0].idx-- : stack[0].idx++
+            self.next(cb)
+          } else if (res.push) {
+            self.pushcount++
+            stack.unshift({ obj: res.push,
+                            idx: reverse ? res.push.children - 1 : 0 })
+            self.next(cb)
+          } else if (res.restored) {
+            stack[0].obj = res.restored
+            self.next(cb)
+          } else if (typeof res.element !== 'undefined') {
+            var index = offsetFromStack(stack)
+            reverse ? stack[0].idx-- : stack[0].idx++
+            cb(null, {
+              element: res.element,
+              index: index
+            })
+          } else {
+            throw new Error('unhandled case, ' + JSON.stringify(res))
+          }
+        })
+      },
+      take: function (nr, cb) {
+        var self = this
+        var accum = []
+        async.forever(function (next) {
+          self.next(function (err, res) {
+            if (err) return cb(err)
+            if (res.eof) return cb(null, accum)
+            if (!nr--) return cb(null, accum)
+            accum.push(res)
+            next()
+          })
+        })
+      },
+      all: function (cb) {
+        this.take(Infinity, cb)
+      }
+    }
+  }
+
+  var offsetFromStack = function (stack) {
+    return _.reduce(stack, function (acc, n) {
+      return acc + n.obj.getOffset(n.idx)
+    }, 0)
+  }
+
+  var stackFromOffset = function (over, offset, acc, cb) {
+    if (!cb) {
+      cb = acc
+      acc = []
+    }
+
+    var idxrest = over.offset(offset)
+
+    var idx = idxrest[0]
+    var rest = idxrest[1]
+
+    acc.unshift({ obj: over,
+                  idx: idx })
+
+    over.get(idx, {}, function (err, res) {
+      if (err) return cb(err)
+      if (res.restored) {
+        acc.shift()
+        stackFromOffset(res.restored, rest, acc, cb)
+      } else if (res.push) {
+        stackFromOffset(res.push, rest, acc, cb)
+      } else {
+        cb(null, acc)
+      }
+    })
+  }
+
+  var elementFilters = function (elements) {
+    var filter = {}
+    _.forEach(elements, function (element) {
+      _.forEach(element, function (value, key) {
+        if (typeof value === 'string') {
+          if (!filter[key]) filter[key] = bloom.empty()
+          _.forEach(splitWords(value), function (word) {
+            filter[key].add(word)
+          })
+        }
+      })
+    })
+    return filter
+  }
+
+  var serializeFilters = function (filters) {
     var serialized = {}
     _.forEach(filters, function (value, key) {
       var compressed = new Buffer(pako.deflate(filters[key].buffer)).toString('base64')
@@ -428,7 +471,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
     return serialized
   }
 
-  var deserialize_filters = function (filters) {
+  var deserializeFilters = function (filters) {
     var deserialized = {}
     _.forEach(filters, function (value, key) {
       var buffer = new Buffer(
@@ -464,10 +507,10 @@ module.exports = function (ipfs, BUCKET_SIZE) {
     return str.substr(str.length - 3)
   }
 
-  var combine = function (tocombine) {
+  var combineFilters = function (tocombine) {
     var filters = {}
     _.forEach(tocombine, function (part) {
-      _.forEach(part.filter(), function (value, key) {
+      _.forEach(part.filters, function (value, key) {
         if (!filters[key]) {
           filters[key] = value
         } else {
@@ -488,8 +531,9 @@ module.exports = function (ipfs, BUCKET_SIZE) {
   var matches = function (element, filter) {
     var matches = true
     _.forEach(filter, function (value, key) {
+      var regexp = new RegExp('\\b' + value + '\\b', "i")
       if (typeof element[key] !== 'string' ||
-          !element[key].toLowerCase().match(value.toLowerCase())) {
+          !element[key].match(regexp)) {
         matches = false
       }
     })
@@ -518,10 +562,9 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         cb(null, new Bucket(object.data.elements))
       } else if (object.type === 'Branch') {
         cb(null, new Branch(_.map(res.Links, function (link, idx) {
-          return new Ref(null,
-                         { Hash: link.Hash,
+          return new Ref({ Hash: link.Hash,
                            Size: link.Size },
-                         deserialize_filters(object.filters[zeropad(idx)]),
+                         deserializeFilters(object.filters[zeropad(idx)]),
                          object.counts[zeropad(idx)])
         })))
       } else if (object.type === 'Finger') {
@@ -529,30 +572,32 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         _.forEach(res.Links, function (link) {
           linkmap[link.Name] = link
         })
-        cb(null, new Finger(new Ref(null,
-                                    { Hash: linkmap.head.Hash,
-                                      Size: linkmap.head.Size },
-                                    deserialize_filters(object.filters.head),
-                                    object.counts.head),
-                            new Ref(null,
-                                    { Hash: linkmap.rest.Hash,
-                                      Size: linkmap.rest.Size },
-                                    deserialize_filters(object.filters.rest),
-                                    object.counts.rest),
-                            new Ref(null,
-                                    { Hash: linkmap.tail.Hash,
-                                      Size: linkmap.tail.Size },
-                                    deserialize_filters(object.filters.tail),
-                                    object.counts.tail)))
+
+        cb(null, new Finger([ new Ref({ Hash: linkmap.head.Hash,
+                                        Size: linkmap.head.Size },
+                                      deserializeFilters(object.filters.head),
+                                      object.counts.head),
+                              new Ref({ Hash: linkmap.rest.Hash,
+                                        Size: linkmap.rest.Size },
+                                      deserializeFilters(object.filters.rest),
+                                      object.counts.rest),
+                              new Ref({ Hash: linkmap.tail.Hash,
+                                        Size: linkmap.tail.Size },
+                                      deserializeFilters(object.filters.tail),
+                                      object.counts.tail) ]))
       }
     })
   }
 
   return {
     empty: function () {
-      return new Bucket([])
+      return new Root()
     },
-    restore: restore,
-    eof: EOF
+    restore: function (hash, cb) {
+      restore(hash, function (err, res) {
+        if (err) return cb(err)
+        cb(null, new Root(res))
+      })
+    }
   }
 }

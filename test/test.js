@@ -1,7 +1,7 @@
 'use strict'
 
 var assert = require('assert')
-var BUCKET_SIZE = 2
+var BUCKET_SIZE = 4
 var ipfs = require('ipfs-api')()
 var aolog = require('../index.js')(ipfs, BUCKET_SIZE)
 var _ = require('lodash')
@@ -12,8 +12,10 @@ var add_many = function (log, count, fn, cb) {
   async.forever(function (next) {
     if (!count--) return next(1)
     var add = fn(i++, log)
+
     log.append(add, function (err, res) {
       if (err) throw err
+
       log = res
       next()
     })
@@ -50,7 +52,7 @@ describe('logs', function () {
   })
 
   it('should have an entry', function () {
-    assert.equal(log2.elements[0], 0)
+    assert.equal(log2.ref.elements[0], 0)
   })
 
   before(function (done) {
@@ -63,7 +65,7 @@ describe('logs', function () {
   })
 
   it('should have split', function () {
-    assert.equal(log3.tail.ref.elements[0], BUCKET_SIZE)
+    assert.equal(log3.ref.elements[2].elements[0], BUCKET_SIZE)
   })
 
   before(function (done) {
@@ -75,7 +77,7 @@ describe('logs', function () {
   })
 
   it('should have appended in head', function () {
-    assert.equal(log4.tail.ref.elements[0], BUCKET_SIZE)
+    assert.equal(log4.ref.elements[2].elements[1], BUCKET_SIZE + 1)
   })
 
   before(function (done) {
@@ -88,12 +90,11 @@ describe('logs', function () {
   })
 
   it('should have pushed a bucket down the middle!', function () {
-    assert.equal(log5.rest.ref.refs[0].ref.elements[0], BUCKET_SIZE)
+    assert.deepEqual(log5.ref.elements[1].elements[0].elements[0], BUCKET_SIZE)
   })
 })
 
 describe('iterators', function () {
-
   describe('bucket iterator', function () {
     var log
     var expected = []
@@ -159,7 +160,6 @@ describe('iterators', function () {
         iter.next(function (err, res) {
           if (err) throw (err)
           if (res.eof) return next(1)
-
           result.push(res.element)
           next()
         })
@@ -312,6 +312,7 @@ describe('iterators', function () {
 
     it('should have gotten the right elements', function (done) {
       var iter = log.iterator({reverse: true})
+
       async.forever(function (next) {
         iter.next(function (err, res) {
           if (err) throw (err)
@@ -446,77 +447,90 @@ describe('filters', function () {
   })
 
   describe('haystack', function () {
+    var HAYSIZE = 200
 
-    var HAYSIZE = 10000
+    describe('forward search', function () {
+      var log
+      var results = []
 
-    var haystack = []
-    for (var i = 0 ; i < HAYSIZE ; i++) {
-      haystack.push({is: 'haystrand #' + i})
-    }
-    var needle = {is: 'needle'}
+      before(function (done) {
+        this.timeout(40000)
+        add_many(aolog.empty(), HAYSIZE,
+                 function (i) {
+                   return { is: "haystrand #" + i }
+                 },
+                 function (err, res) {
+                   if (err) throw err
+                   log = res
+                   done()
+                 })
+      })
 
-    haystack.push(needle)
-    haystack = _.shuffle(haystack)
-    var needleidx = haystack.indexOf(needle)
-
-    var result = []
-    var resultB = []
-    var log
-
-    before(function (done) {
-      this.timeout(40000)
-      add_many(aolog.empty(), HAYSIZE + 1,
-               function (i) { return haystack[i] },
-               function (err, res) {
-                 if (err) throw err
-                 log = res
-                 done()
-               })
-    })
-
-    before(function (done) {
-      var iter = log.iterator({filter: {is: 'needle'}})
-
-      async.forever(function (next) {
-        iter.next(function (err, res) {
-          if (err) throw (err)
-          if (res.eof) return next(1)
-          result.push(res)
-          next()
+      before(function (done) {
+        var count = 0
+        _.map(range(0, HAYSIZE), function (i) {
+          var iter = log.iterator({
+            filter: {
+              is: 'hAyStRaNd #' + i
+            }
+          }).all(function (err, res) {
+            if (err) throw err
+            results[i] = res
+            if (count++ == HAYSIZE - 1) done()
+          })
         })
-      }, function () { done() })
-    })
+      })
 
-    it('should have found the needle at ' + needleidx, function () {
-      assert.equal(result.length, 1)
-      assert.deepEqual(result[0], {
-        element: {
-          is: 'needle'
-        },
-        index: needleidx
+      it('should have found all the haystrands', function () {
+        for (var i = 0 ; i < HAYSIZE ; i++) {
+          assert.equal(results[i].length, 1)
+          assert.equal(results[i][0].element.is,
+                       "haystrand #" + i)
+        }
       })
     })
 
-    before(function (done) {
-      var iter = log.iterator({filter: {is: 'NeEdle'}})
+    describe("backward search", function () {
+      var log
+      var results = []
 
-      async.forever(function (next) {
-        iter.next(function (err, res) {
-          if (err) throw (err)
-          if (res.eof) return next(1)
-          resultB.push(res)
-          next()
+      before(function (done) {
+        this.timeout(40000)
+        add_many(aolog.empty(), HAYSIZE,
+                 function (i) {
+                   return { is: "haystrand #" + i }
+                 },
+                 function (err, res) {
+                   if (err) throw err
+                   log = res
+                   done()
+                 })
+      })
+
+      before(function (done) {
+        var count = 0
+        _.map(range(0, HAYSIZE), function (i) {
+          var iter = log.iterator({
+            filter: {
+              is: 'hAyStRaNd #' + i
+            },
+            reverse: true
+          }).all(function (err, res) {
+            if (err) throw err
+            results[i] = res
+            if (++count == HAYSIZE) done()
+          })
         })
-      }, function () { done() })
-    })
+      })
 
-    it('should have found the nEeDlE at ' + needleidx, function () {
-      assert.equal(resultB.length, 1)
-      assert.deepEqual(resultB[0], {
-        element: {
-          is: 'needle'
-        },
-        index: needleidx
+      it('should have found all the haystrands', function () {
+        for (var i = 0 ; i < HAYSIZE ; i++) {
+          assert.equal(results[i].length, 1, 'right length')
+          assert.equal(results[i][0].index, i, 'right index')
+          assert.equal(results[i][0].element.is,
+                       "haystrand #" + i,
+                       'right strand')
+        }
       })
     })
   })
@@ -538,7 +552,7 @@ describe('count', function () {
 })
 
 describe('index', function () {
-  var SIZE = BUCKET_SIZE * 100
+  var SIZE = BUCKET_SIZE * 20
   it('should have the correct indicies', function (done) {
     var count = 0
     add_many(aolog.empty(), SIZE,
@@ -674,7 +688,7 @@ describe('persistance', function () {
 
   describe('persist large tree', function () {
 
-    var SIZE = 1000
+    var SIZE = 100
 
     var log
     var hash
@@ -759,10 +773,9 @@ describe('persistance', function () {
                })
     })
 
-    it('should have filters on all refs', function () {
-      assert(log.head.filters.is)
-      assert(log.rest.filters.is)
-      assert(log.tail.filters.is)
+    it('should have filters on head/tail', function () {
+      assert(log.ref.elements[0].filters.is)
+      assert(log.ref.elements[2].filters.is)
     })
 
     var hash
@@ -797,18 +810,12 @@ describe('persistance', function () {
 
     it('should have restored the filters', function () {
 
-      assert.equal(log.head.filters.is.toString(),
-                   restored.head.filters.is.toString())
-      assert.equal(log.rest.filters.is.toString(),
-                   restored.rest.filters.is.toString())
-      assert.equal(log.tail.filters.is.toString(),
-                   restored.tail.filters.is.toString())
+      assert.equal(log.ref.elements[0].filters.is.toString(),
+                   restored.ref.elements[0].filters.is.toString())
 
-      for (var i = 0 ; i < BUCKET_SIZE ; i++) {
-        assert.equal(
-          log.rest.ref.head.ref.refs[i].filters.is.toString(),
-          restored.rest.ref.head.ref.refs[i].filters.is.toString())
-      }
+      assert.equal(log.ref.elements[2].filters.is.toString(),
+                   restored.ref.elements[2].filters.is.toString())
+
     })
   })
 
@@ -841,7 +848,7 @@ describe('persistance', function () {
 
   })
 
-  describe('persist, restore, add, persist', function () {
+  describe('add to persisted', function () {
     var log
     var SIZE = BUCKET_SIZE * 8
 
