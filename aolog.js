@@ -62,8 +62,10 @@ module.exports = function (ipfs, BUCKET_SIZE) {
                            } else if (typeof res.element !== 'undefined') {
                              offset = 'resolved'
                              reverse ? stack[0].idx-- : stack[0].idx++
-                             cb(null, { element: res.element, index: index })
-                             reverse ? index-- : index++
+                             cb(null, {
+                               element: res.element,
+                               index: reverse ? index-- : index++
+                             })
                            }
                          })
       },

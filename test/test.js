@@ -20,6 +20,16 @@ var add_many = function (log, count, fn, cb) {
   }, function () { cb(null, log) })
 }
 
+function range (from, to) {
+  if (from > to) return []
+  var arr = []
+  while (from !== to) {
+    arr.push(from++)
+  }
+  return arr
+}
+
+
 /* global describe, it, before */
 
 describe('logs', function () {
@@ -224,15 +234,6 @@ describe('iterators', function () {
                  done()
                })
     })
-
-    // helper
-    function range (from, to) {
-      var arr = []
-      while (from !== to) {
-        arr.push(from++)
-      }
-      return arr
-    }
 
     it('should take all from all offsets', function (done) {
       var count = 0
@@ -532,6 +533,62 @@ describe('count', function () {
              function (err, res) {
                if (err) throw err
                done()
+             })
+  })
+})
+
+describe('index', function () {
+  var SIZE = BUCKET_SIZE * 100
+  it('should have the correct indicies', function (done) {
+    var count = 0
+    add_many(aolog.empty(), SIZE,
+             function (i, current) {
+               current.iterator().all(function (err, res) {
+                 assert.deepEqual(range(0, i),
+                                  _.map(res, function (x) { return x.index }))
+                 if (++count == SIZE) done()
+               })
+               return i
+             },
+             function (err, res) {
+               if (err) throw err
+             })
+  })
+
+  it('should have the correct indicies with offset', function (done) {
+    var count = 0
+    var offset = 2
+    add_many(aolog.empty(), SIZE,
+             function (i, current) {
+               current.iterator({ offset: offset }).all(function (err, res) {
+                 assert.deepEqual(range(offset, i),
+                                  _.map(res, function (x) { return x.index }))
+                 if (++count == SIZE) done()
+               })
+               return i
+             },
+             function (err, res) {
+               if (err) throw err
+             })
+  })
+
+  it('should have the correct reverse indicies', function (done) {
+    var count = 0
+    add_many(aolog.empty(), SIZE,
+             function (i, current) {
+               return i
+             },
+             function (err, res) {
+               if (err) throw err
+
+               res.iterator({ reverse: true, offset: SIZE - 1 }).all(
+                 function (err, res) {
+                   if (err) throw err
+                   assert.deepEqual(range(0, SIZE).reverse(),
+                                    _.map(res, function (x) { return x.index }))
+                   done()
+                 })
+
              })
   })
 })
