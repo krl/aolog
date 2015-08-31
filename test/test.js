@@ -168,7 +168,7 @@ describe('iterators', function () {
 
       iter.take(nr, function (err, array) {
         if (err) throw err
-        resultPart = array
+        resultPart = _.map(array, function (x) { return x.element })
         done()
       })
     })
@@ -184,7 +184,7 @@ describe('iterators', function () {
 
       iter.take(SIZE * 2, function (err, array) {
         if (err) throw err
-        resultTakeMore = array
+        resultTakeMore = _.map(array, function (x) { return x.element })
         done()
       })
 
@@ -200,7 +200,7 @@ describe('iterators', function () {
 
       iter.all(function (err, array) {
         if (err) throw err
-        resultAll = array
+        resultAll = _.map(array, function (x) { return x.element })
         done()
       })
 
@@ -242,7 +242,8 @@ describe('iterators', function () {
         count++
         iter.all(function (err, array) {
           if (err) throw err
-          assert.deepEqual(array, reference.slice(ofs))
+          assert.deepEqual(_.map(array, function (x) { return x.element }),
+                           reference.slice(ofs))
           if (!--count) done()
         })
       })
@@ -268,7 +269,8 @@ describe('iterators', function () {
         count++
         iter.all(function (err, array) {
           if (err) throw err
-          assert.deepEqual(array, reference.slice(0, ofs + 1).reverse())
+          assert.deepEqual(_.map(array, function (x) { return x.element }),
+                           reference.slice(0, ofs + 1).reverse())
           if (!--count) done()
         })
       })
@@ -331,7 +333,7 @@ describe('iterators', function () {
 
       iter.take(nr, function (err, array) {
         if (err) throw err
-        resultPart = array
+        resultPart = _.map(array, function (x) { return x.element })
         done()
       })
     })
@@ -347,7 +349,7 @@ describe('iterators', function () {
 
       iter.take(SIZE * 2, function (err, array) {
         if (err) throw err
-        resultTakeMore = array
+        resultTakeMore = _.map(array, function (x) { return x.element })
         done()
       })
 
@@ -363,7 +365,7 @@ describe('iterators', function () {
 
       iter.all(function (err, array) {
         if (err) throw err
-        resultAll = array
+        resultAll = _.map(array, function (x) { return x.element })
         done()
       })
 
@@ -825,7 +827,8 @@ describe('persistance', function () {
 
             rerestored.iterator().all(function (err, res) {
               if (err) throw err
-              assert.deepEqual(expected, res)
+              assert.deepEqual(expected,
+                               _.map(res, function (x) { return x.element }))
               done()
             })
           })

@@ -85,7 +85,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
             if (err) return cb(err)
             if (res.eof) return cb(null, accum)
             if (!nr--) return cb(null, accum)
-            accum.push(res.element)
+            accum.push(res)
             next()
           })
         })
