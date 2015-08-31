@@ -106,11 +106,11 @@ describe('iterators', function () {
     before(function (done) {
       var iter = log.iterator()
       async.forever(function (next) {
-        iter.next(function (err, value, status) {
+        iter.next(function (err, res) {
           if (err) throw (err)
-          if (status === aolog.eof) return next(1)
+          if (res.eof) return next(1)
 
-          result.push(value)
+          result.push(res.element)
           next()
         })
       }, function () { done() })
@@ -146,11 +146,11 @@ describe('iterators', function () {
     before(function (done) {
       var iter = log.iterator()
       async.forever(function (next) {
-        iter.next(function (err, value, status) {
+        iter.next(function (err, res) {
           if (err) throw (err)
-          if (status === aolog.eof) return next(1)
+          if (res.eof) return next(1)
 
-          result.push(value)
+          result.push(res.element)
           next()
         })
       }, function () { done() })
@@ -254,7 +254,7 @@ describe('iterators', function () {
         var iter = log.iterator({offset: ofs})
         iter.next(function (err, res) {
           if (err) throw err
-          assert.deepEqual(res, reference[ofs])
+          assert.deepEqual(res.element, reference[ofs])
           if (++count === SIZE) done()
         })
       })
@@ -280,7 +280,7 @@ describe('iterators', function () {
         var iter = log.iterator({offset: ofs, reverse: true})
         iter.next(function (err, res) {
           if (err) throw err
-          assert.deepEqual(res, reference[ofs])
+          assert.deepEqual(res.element, reference[ofs])
           if (++count === SIZE) done()
         })
       })
@@ -310,11 +310,11 @@ describe('iterators', function () {
     it('should have gotten the right elements', function (done) {
       var iter = log.iterator({reverse: true})
       async.forever(function (next) {
-        iter.next(function (err, value, status) {
+        iter.next(function (err, res) {
           if (err) throw (err)
-          if (status === aolog.eof) return next(1)
+          if (res.eof) return next(1)
 
-          result.push(value)
+          result.push(res.element)
           next()
         })
       }, function () {
@@ -423,12 +423,12 @@ describe('filters', function () {
     before(function (done) {
       var iter = log.iterator({filter: {msg: 'buzz'}})
       async.forever(function (next) {
-        iter.next(function (err, value, status) {
+        iter.next(function (err, res) {
           if (err) throw (err)
-          if (status === aolog.eof) return next(1)
+          if (res.eof) return next(1)
           count++
 
-          if (!value.msg.match('buzz')) {
+          if (!res.element.msg.match('buzz')) {
             throw new Error('no buzz!')
           }
           next()
@@ -450,8 +450,11 @@ describe('filters', function () {
     for (var i = 0 ; i < HAYSIZE ; i++) {
       haystack.push({is: 'haystrand #' + i})
     }
-    haystack.push({is: 'needle'})
+    var needle = {is: 'needle'}
+
+    haystack.push(needle)
     haystack = _.shuffle(haystack)
+    var needleidx = haystack.indexOf(needle)
 
     var result = []
     var log
@@ -471,18 +474,23 @@ describe('filters', function () {
       var iter = log.iterator({filter: {is: 'needle'}})
 
       async.forever(function (next) {
-        iter.next(function (err, value, status) {
+        iter.next(function (err, res) {
           if (err) throw (err)
-          if (status === aolog.eof) return next(1)
-          result.push(value)
+          if (res.eof) return next(1)
+          result.push(res)
           next()
         })
       }, function () { done() })
     })
 
-    it('should have found the needle', function () {
+    it('should have found the needle at ' + needleidx, function () {
       assert.equal(result.length, 1)
-      assert.deepEqual(result[0], {is: 'needle'})
+      assert.deepEqual(result[0], {
+        element: {
+          is: 'needle'
+        },
+        index: needleidx
+      })
     })
   })
 })
@@ -558,19 +566,19 @@ describe('persistance', function () {
       }
 
       async.forever(function (next) {
-        iterA.next(function (err, value, status) {
+        iterA.next(function (err, res) {
           if (err) throw (err)
-          if (status === aolog.eof) return next(1)
-          resultA.push(value)
+          if (res.eof) return next(1)
+          resultA.push(res.element)
           next()
         })
       }, iterdone(done))
 
       async.forever(function (next) {
-        iterB.next(function (err, value, status) {
+        iterB.next(function (err, res) {
           if (err) throw (err)
-          if (status === aolog.eof) return next(1)
-          resultB.push(value)
+          if (res.eof) return next(1)
+          resultB.push(res.element)
           next()
         })
       }, iterdone(done))
@@ -589,7 +597,7 @@ describe('persistance', function () {
     var hash
 
     before(function (done) {
-      this.timeout(40000)
+      this.timeout(10000)
       add_many(aolog.empty(), SIZE, function (i) { return { is: 'i = ' + i } },
                function (err, res) {
                  if (err) throw err
@@ -599,7 +607,7 @@ describe('persistance', function () {
     })
 
     before(function (done) {
-      this.timeout(40000)
+      this.timeout(10000)
       log.persist(function (err, res) {
         if (err) throw err
         hash = res.Hash
@@ -620,7 +628,7 @@ describe('persistance', function () {
     var resultB = []
 
     before(function (done) {
-      this.timeout(40000)
+      this.timeout(10000)
       var iterA = log.iterator()
       var iterB = restored.iterator()
 
@@ -631,18 +639,18 @@ describe('persistance', function () {
         }
       }
       async.forever(function (next) {
-        iterA.next(function (err, value, status) {
+        iterA.next(function (err, res) {
           if (err) throw (err)
-          if (status === aolog.eof) return next(1)
-          resultA.push(value)
+          if (res.eof) return next(1)
+          resultA.push(res.element)
           next()
         })
       }, iterdone(done))
       async.forever(function (next) {
-        iterB.next(function (err, value, status) {
+        iterB.next(function (err, res) {
           if (err) throw (err)
-          if (status === aolog.eof) return next(1)
-          resultB.push(value)
+          if (res.eof) return next(1)
+          resultB.push(res.element)
           next()
         })
       }, iterdone(done))
@@ -696,9 +704,9 @@ describe('persistance', function () {
       // make sure it's all in memory
       var iter = restored.iterator()
       async.forever(function (next) {
-        iter.next(function (err, value, status) {
+        iter.next(function (err, res) {
           if (err) throw (err)
-          if (status === aolog.eof) return next(1)
+          if (res.eof) return next(1)
           next()
         })
       }, function () { done() })

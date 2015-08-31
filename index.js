@@ -18,6 +18,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
     var fullfilter = makefilter(opts.filter)
     var def = reverse ? over.count - 1 : 0
     var offset = (typeof opts.offset !== 'undefined' ? opts.offset : def)
+    var index = offset
 
     var stack = [{obj: over}]
 
@@ -25,6 +26,10 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       pushcount: 0,
       next: function (cb) {
         var self = this
+
+        if (stack.length === 0) {
+          return cb(null, { eof: true })
+        }
 
         if (typeof stack[0].idx === 'undefined') {
           if (offset !== 'resolved') {
@@ -36,38 +41,51 @@ module.exports = function (ipfs, BUCKET_SIZE) {
           }
         }
 
-        stack[0].obj.get(stack[0].idx, fullfilter, function (err, element, status) {
-          if (err) return cb(err)
+        stack[0].obj.get(stack[0].idx, fullfilter, function (err, res) {
+                           if (err) return cb(err)
 
-          if (status === EOF) {
-            stack.shift()
-            // toplevel eof?
-            if (stack.length === 0) return cb(null, null, EOF)
-            reverse ? stack[0].idx-- : stack[0].idx++
-            self.next(cb)
-          } else if (status === SKIP) {
-            reverse ? stack[0].idx-- : stack[0].idx++
-            self.next(cb)
-          } else if (typeof element.get === 'function') {
-            self.pushcount++
-            stack.unshift({obj: element})
-            self.next(cb)
-          } else { // leaf
-            offset = 'resolved'
-            reverse ? stack[0].idx-- : stack[0].idx++
-            cb(null, element)
-          }
-        })
+                           // console.log('res')
+                           // console.log(res)
+
+                           if (res.eof) {
+                             // console.log('eof')
+                             stack.shift()
+                             if (!stack[0]) return cb(null, { eof: true })
+                             reverse ? stack[0].idx-- : stack[0].idx++
+                             self.next(cb)
+                           } else if (res.skip) {
+                             // console.log('skip')
+                             reverse ? stack[0].idx-- : stack[0].idx++
+                             reverse ? index -= res.skip : index += res.skip
+                             self.next(cb)
+                           } else if (res.push) {
+                             // console.log('push')
+                             self.pushcount++
+
+                             // console.log(res.push)
+
+                             stack.unshift({obj: res.push})
+                             self.next(cb)
+                           } else if (typeof res.element !== 'undefined') {
+                             // console.log('element yo')
+                             offset = 'resolved'
+                             reverse ? stack[0].idx-- : stack[0].idx++
+                             cb(null, { element: res.element, index: index })
+                             reverse ? index-- : index++
+                           } else {
+                             console.log('eh')
+                           }
+                         })
       },
       take: function (nr, cb) {
         var self = this
         var accum = []
         async.forever(function (next) {
-          self.next(function (err, value, status) {
+          self.next(function (err, res) {
             if (err) return cb(err)
-            if (status === EOF) return cb(null, accum)
+            if (res.eof) return cb(null, accum)
             if (!nr--) return cb(null, accum)
-            accum.push(value)
+            accum.push(res.element)
             next()
           })
         })
@@ -115,13 +133,14 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         return [0, ofs]
       },
       get: function (idx, filter, cb) {
+        // console.log('get in ref')
         var self = this
 
         if (idx === 0) {
           if (!subsetMatches(self.filters, filter.blooms)) {
-            cb(null, null, SKIP)
+            cb(null, { skip: self.count })
           } else if (self.ref) {
-            return cb(null, self.ref)
+            return cb(null, { push: self.ref })
           } else {
             restore(self.persisted.Hash, function (err, res) {
               if (err) return cb(err)
@@ -130,7 +149,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
             })
           }
         } else {
-          cb(null, null, EOF)
+          cb(null, { eof: true })
         }
       },
       persist: function (cb) {
@@ -184,13 +203,14 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         return filter
       },
       get: function (idx, filter, cb) {
+        // console.log('get in bucket')
         var el = this.elements[idx]
-        if (typeof el === 'undefined') return cb(null, null, EOF)
+        if (typeof el === 'undefined') return cb(null, { eof: true })
 
         if (matches(el, filter.words)) {
-          return cb(null, el)
+          return cb(null, { element: el })
         } else {
-          return cb(null, null, SKIP)
+          return cb(null, { skip: 1 })
         }
       },
       iterator: function (opts) {
@@ -253,11 +273,12 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         return [idx, ofs]
       },
       get: function (idx, filter, cb) {
+        // console.log('get in branch')
         var ref = this.refs[idx]
         if (ref) {
-          cb(null, ref)
+          cb(null, { push: ref })
         } else {
-          cb(null, null, EOF)
+          cb(null, { eof: true })
         }
       },
       iterator: function (opts) {
@@ -361,10 +382,11 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         return [idx, ofs]
       },
       get: function (idx, filter, cb) {
-        if (idx === 0) return cb(null, head)
-        if (idx === 1) return cb(null, rest)
-        if (idx === 2) return cb(null, tail)
-        cb(null, null, EOF)
+        // console.log('get in finger')
+        if (idx === 0) return cb(null, { push: head })
+        if (idx === 1) return cb(null, { push: rest })
+        if (idx === 2) return cb(null, { push: tail })
+        cb(null, { eof: true})
       },
       iterator: function (opts) {
         return new Iterator(this, opts)
