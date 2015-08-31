@@ -593,6 +593,50 @@ describe('index', function () {
   })
 })
 
+describe('search', function () {
+  var texts = [
+    /* 0 */ "hello worlds",
+    /* 1 */ "hello there",
+    /* 2 */ "this is a longer string with lots of words in it ok",
+    /* 3 */ "this is a longer string with lots of hello",
+    /* 4 */ "who would search for this string",
+    /* 5 */ "i need more strings to fill this out",
+    /* 6 */ "where can you get cheap strings around here?",
+    /* 7 */ "we could even search for this #hashtag",
+    /* 8 */ "we could even hello again",
+    /* 9 */ "i need more sleep"
+  ]
+
+  var log
+
+  before(function (done) {
+    add_many(aolog.empty(), texts.length,
+             function (i, current) {
+               return { text: texts[i] }
+             },
+             function (err, res) {
+               if (err) throw err
+               log = res
+               done()
+             })
+  })
+
+  it('should search', function (done) {
+    log.iterator({ filter: { text: 'hellO' },
+                   reverse: true,
+                   offset: texts.length - 1
+                 }).all(function (err, res) {
+                   assert.deepEqual(res, [
+                     { element: { text: 'we could even hello again' }, index: 8 },
+                     { element: { text: 'this is a longer string with lots of hello' },
+                       index: 3 },
+                     { element: { text: 'hello there' }, index: 1 },
+                     { element: { text: 'hello worlds' }, index: 0 } ])
+                   done()
+                 })
+  })
+})
+
 describe('persistance', function () {
   describe('persist bucket', function () {
 
