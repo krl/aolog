@@ -46,36 +46,24 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         stack[0].obj.get(stack[0].idx, fullfilter, function (err, res) {
                            if (err) return cb(err)
 
-                           // console.log('res')
-                           // console.log(res)
-
                            if (res.eof) {
-                             // console.log('eof')
                              stack.shift()
                              if (!stack[0]) return cb(null, { eof: true })
                              reverse ? stack[0].idx-- : stack[0].idx++
                              self.next(cb)
                            } else if (res.skip) {
-                             // console.log('skip')
                              reverse ? stack[0].idx-- : stack[0].idx++
                              reverse ? index -= res.skip : index += res.skip
                              self.next(cb)
                            } else if (res.push) {
-                             // console.log('push')
                              self.pushcount++
-
-                             // console.log(res.push)
-
                              stack.unshift({obj: res.push})
                              self.next(cb)
                            } else if (typeof res.element !== 'undefined') {
-                             // console.log('element yo')
                              offset = 'resolved'
                              reverse ? stack[0].idx-- : stack[0].idx++
                              cb(null, { element: res.element, index: index })
                              reverse ? index-- : index++
-                           } else {
-                             console.log('eh')
                            }
                          })
       },
@@ -135,7 +123,6 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         return [0, ofs]
       },
       get: function (idx, filter, cb) {
-        // console.log('get in ref')
         var self = this
 
         if (idx === 0) {
@@ -155,7 +142,6 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         }
       },
       persist: function (cb) {
-        //console.log('persist ref')
         var self = this
         if (self.persisted) {
           cb(null, self.persisted)
@@ -205,7 +191,6 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         return filter
       },
       get: function (idx, filter, cb) {
-        // console.log('get in bucket')
         var el = this.elements[idx]
         if (typeof el === 'undefined') return cb(null, { eof: true })
 
@@ -219,7 +204,6 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         return new Iterator(this, opts)
       },
       persist: function (cb) {
-        //console.log('persist bucket')
         var self = this
 
         var buf = new Buffer(JSON.stringify({
@@ -275,7 +259,6 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         return [idx, ofs]
       },
       get: function (idx, filter, cb) {
-        // console.log('get in branch')
         var ref = this.refs[idx]
         if (ref) {
           cb(null, { push: ref })
@@ -287,7 +270,6 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         return new Iterator(this, opts)
       },
       persist: function (cb) {
-        //console.log('persist branch')
         var self = this
         var filters = {}
         var counts = {}
@@ -384,7 +366,6 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         return [idx, ofs]
       },
       get: function (idx, filter, cb) {
-        // console.log('get in finger')
         if (idx === 0) return cb(null, { push: head })
         if (idx === 1) return cb(null, { push: rest })
         if (idx === 2) return cb(null, { push: tail })
@@ -394,7 +375,6 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         return new Iterator(this, opts)
       },
       persist: function (cb) {
-        //console.log('persist finger')
         var self = this
         var filters = {}
         var counts = {}
@@ -502,14 +482,14 @@ module.exports = function (ipfs, BUCKET_SIZE) {
     // split into words, # and @ are concidered part
     // of the words
     // TODO: support non-latin alphabets
-    return string.split(/[^0-9A-Za-z\u00C0-\u00ff\u00C0-\u024f#@_-]+/)
+    return string.toLowerCase().split(/[^0-9a-z\u00C0-\u00ff\u00C0-\u024f#@_-]+/)
   }
 
   var matches = function (element, filter) {
     var matches = true
     _.forEach(filter, function (value, key) {
       if (typeof element[key] !== 'string' ||
-          !element[key].match(value)) {
+          !element[key].toLowerCase().match(value.toLowerCase())) {
         matches = false
       }
     })

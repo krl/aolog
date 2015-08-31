@@ -459,6 +459,7 @@ describe('filters', function () {
     var needleidx = haystack.indexOf(needle)
 
     var result = []
+    var resultB = []
     var log
 
     before(function (done) {
@@ -488,6 +489,29 @@ describe('filters', function () {
     it('should have found the needle at ' + needleidx, function () {
       assert.equal(result.length, 1)
       assert.deepEqual(result[0], {
+        element: {
+          is: 'needle'
+        },
+        index: needleidx
+      })
+    })
+
+    before(function (done) {
+      var iter = log.iterator({filter: {is: 'NeEdle'}})
+
+      async.forever(function (next) {
+        iter.next(function (err, res) {
+          if (err) throw (err)
+          if (res.eof) return next(1)
+          resultB.push(res)
+          next()
+        })
+      }, function () { done() })
+    })
+
+    it('should have found the nEeDlE at ' + needleidx, function () {
+      assert.equal(resultB.length, 1)
+      assert.deepEqual(resultB[0], {
         element: {
           is: 'needle'
         },
