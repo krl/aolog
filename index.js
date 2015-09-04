@@ -156,7 +156,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
     }
   }
 
-  var Bucket = function (elements, filters) {
+  var Bucket = function (elements) {
     return {
       type: 'Bucket',
       elements: elements || [],
@@ -228,7 +228,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
     }
   }
 
-  var Branch = function (refs, filters) {
+  var Branch = function (refs) {
     return {
       type: 'Branch',
       refs: refs,
