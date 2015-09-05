@@ -12,8 +12,13 @@ var add_many = function (log, count, fn, cb) {
   async.forever(function (next) {
     if (!count--) return next(1)
     var add = fn(i++, log)
+
     log.append(add, function (err, res) {
       if (err) throw err
+
+      // console.log('res')
+      // console.log(res)
+
       log = res
       next()
     })
@@ -50,7 +55,7 @@ describe('logs', function () {
   })
 
   it('should have an entry', function () {
-    assert.equal(log2.elements[0], 0)
+    assert.equal(log2.ref.elements[0], 0)
   })
 
   before(function (done) {
@@ -63,7 +68,7 @@ describe('logs', function () {
   })
 
   it('should have split', function () {
-    assert.equal(log3.tail.ref.elements[0], BUCKET_SIZE)
+    assert.equal(log3.ref.elements[2].elements[0], BUCKET_SIZE)
   })
 
   before(function (done) {
@@ -75,7 +80,7 @@ describe('logs', function () {
   })
 
   it('should have appended in head', function () {
-    assert.equal(log4.tail.ref.elements[0], BUCKET_SIZE)
+    assert.equal(log4.ref.elements[2].elements[1], BUCKET_SIZE + 1)
   })
 
   before(function (done) {
@@ -88,12 +93,11 @@ describe('logs', function () {
   })
 
   it('should have pushed a bucket down the middle!', function () {
-    assert.equal(log5.rest.ref.refs[0].ref.elements[0], BUCKET_SIZE)
+    assert.deepEqual(log5.ref.elements[1].elements[0].elements[0], BUCKET_SIZE)
   })
 })
 
 describe('iterators', function () {
-
   describe('bucket iterator', function () {
     var log
     var expected = []
@@ -139,6 +143,10 @@ describe('iterators', function () {
     var expected = []
 
     before(function (done) {
+
+      // console.log('aolog.empty()')
+      // console.log(aolog.empty())
+
       add_many(aolog.empty(), SIZE,
                function (i) {
                  expected.push(i)
@@ -159,7 +167,6 @@ describe('iterators', function () {
         iter.next(function (err, res) {
           if (err) throw (err)
           if (res.eof) return next(1)
-
           result.push(res.element)
           next()
         })
@@ -312,6 +319,7 @@ describe('iterators', function () {
 
     it('should have gotten the right elements', function (done) {
       var iter = log.iterator({reverse: true})
+
       async.forever(function (next) {
         iter.next(function (err, res) {
           if (err) throw (err)
