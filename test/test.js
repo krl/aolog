@@ -454,7 +454,7 @@ describe('filters', function () {
   })
 
   describe('haystack', function () {
-    var HAYSIZE = 3
+    var HAYSIZE = 200
 
     describe('forward search', function () {
       var log
@@ -520,27 +520,19 @@ describe('filters', function () {
           var filter = {
             is: 'hAyStRaNd #' + i
           }
-          console.log(filter)
+          //console.log(filter)
           var iter = log.iterator({
             filter: filter,
             reverse: true
           }).all(function (err, res) {
             if (err) throw err
             results[i] = res
-
-            console.log('res')
-            console.log(res)
-
             if (++count == HAYSIZE) done()
-
           })
         })
       })
 
       it('should have found all the haystrands', function () {
-
-        console.log(results)
-
         for (var i = 0 ; i < HAYSIZE ; i++) {
           assert.equal(results[i].length, 1, 'right length')
           // console.log(results[i][0])
@@ -696,301 +688,301 @@ describe('persistance', function () {
       assert.equal(hash.substr(0, 2), 'Qm')
     })
 
-    var restored
-    before(function (done) {
-      aolog.restore(hash, function (err, res) {
-        if (err) throw err
-        restored = res
-        done()
-      })
-    })
+  //   var restored
+  //   before(function (done) {
+  //     aolog.restore(hash, function (err, res) {
+  //       if (err) throw err
+  //       restored = res
+  //       done()
+  //     })
+  //   })
 
-    it('should have restored the bucket', function () {
-      assert(restored)
-    })
+  //   it('should have restored the bucket', function () {
+  //     assert(restored)
+  //   })
 
-    var resultA = []
-    var resultB = []
+  //   var resultA = []
+  //   var resultB = []
 
-    before(function (done) {
+  //   before(function (done) {
 
-      var iterA = log.iterator()
-      var iterB = restored.iterator()
+  //     var iterA = log.iterator()
+  //     var iterB = restored.iterator()
 
-      var nrdone = 0
-      var iterdone = function (done) {
-        return function () {
-          if (++nrdone === 2) done()
-        }
-      }
+  //     var nrdone = 0
+  //     var iterdone = function (done) {
+  //       return function () {
+  //         if (++nrdone === 2) done()
+  //       }
+  //     }
 
-      async.forever(function (next) {
-        iterA.next(function (err, res) {
-          if (err) throw (err)
-          if (res.eof) return next(1)
-          resultA.push(res.element)
-          next()
-        })
-      }, iterdone(done))
+  //     async.forever(function (next) {
+  //       iterA.next(function (err, res) {
+  //         if (err) throw (err)
+  //         if (res.eof) return next(1)
+  //         resultA.push(res.element)
+  //         next()
+  //       })
+  //     }, iterdone(done))
 
-      async.forever(function (next) {
-        iterB.next(function (err, res) {
-          if (err) throw (err)
-          if (res.eof) return next(1)
-          resultB.push(res.element)
-          next()
-        })
-      }, iterdone(done))
-    })
+  //     async.forever(function (next) {
+  //       iterB.next(function (err, res) {
+  //         if (err) throw (err)
+  //         if (res.eof) return next(1)
+  //         resultB.push(res.element)
+  //         next()
+  //       })
+  //     }, iterdone(done))
+  //   })
 
-    it('should have the same elements', function () {
-      assert.deepEqual(resultA, resultB)
-    })
-  })
+  //   it('should have the same elements', function () {
+  //     assert.deepEqual(resultA, resultB)
+  //   })
+  // })
 
-  describe('persist large tree', function () {
+  // describe('persist large tree', function () {
 
-    var SIZE = 1000
+  //   var SIZE = 1000
 
-    var log
-    var hash
+  //   var log
+  //   var hash
 
-    before(function (done) {
-      this.timeout(10000)
-      add_many(aolog.empty(), SIZE, function (i) { return { is: 'i = ' + i } },
-               function (err, res) {
-                 if (err) throw err
-                 log = res
-                 done()
-               })
-    })
+  //   before(function (done) {
+  //     this.timeout(10000)
+  //     add_many(aolog.empty(), SIZE, function (i) { return { is: 'i = ' + i } },
+  //              function (err, res) {
+  //                if (err) throw err
+  //                log = res
+  //                done()
+  //              })
+  //   })
 
-    before(function (done) {
-      this.timeout(10000)
-      log.persist(function (err, res) {
-        if (err) throw err
-        hash = res.Hash
-        done()
-      })
-    })
+  //   before(function (done) {
+  //     this.timeout(10000)
+  //     log.persist(function (err, res) {
+  //       if (err) throw err
+  //       hash = res.Hash
+  //       done()
+  //     })
+  //   })
 
-    var restored
-    before(function (done) {
-      aolog.restore(hash, function (err, res) {
-        if (err) throw err
-        restored = res
-        done()
-      })
-    })
+  //   var restored
+  //   before(function (done) {
+  //     aolog.restore(hash, function (err, res) {
+  //       if (err) throw err
+  //       restored = res
+  //       done()
+  //     })
+  //   })
 
-    var resultA = []
-    var resultB = []
+  //   var resultA = []
+  //   var resultB = []
 
-    before(function (done) {
-      this.timeout(10000)
-      var iterA = log.iterator()
-      var iterB = restored.iterator()
+  //   before(function (done) {
+  //     this.timeout(10000)
+  //     var iterA = log.iterator()
+  //     var iterB = restored.iterator()
 
-      var nrdone = 0
-      var iterdone = function (done) {
-        return function () {
-          if (++nrdone === 2) done()
-        }
-      }
-      async.forever(function (next) {
-        iterA.next(function (err, res) {
-          if (err) throw (err)
-          if (res.eof) return next(1)
-          resultA.push(res.element)
-          next()
-        })
-      }, iterdone(done))
-      async.forever(function (next) {
-        iterB.next(function (err, res) {
-          if (err) throw (err)
-          if (res.eof) return next(1)
-          resultB.push(res.element)
-          next()
-        })
-      }, iterdone(done))
-    })
+  //     var nrdone = 0
+  //     var iterdone = function (done) {
+  //       return function () {
+  //         if (++nrdone === 2) done()
+  //       }
+  //     }
+  //     async.forever(function (next) {
+  //       iterA.next(function (err, res) {
+  //         if (err) throw (err)
+  //         if (res.eof) return next(1)
+  //         resultA.push(res.element)
+  //         next()
+  //       })
+  //     }, iterdone(done))
+  //     async.forever(function (next) {
+  //       iterB.next(function (err, res) {
+  //         if (err) throw (err)
+  //         if (res.eof) return next(1)
+  //         resultB.push(res.element)
+  //         next()
+  //       })
+  //     }, iterdone(done))
+  //   })
 
-    it('should have the same elements', function () {
-      assert.deepEqual(resultA, resultB)
-    })
-  })
+  //   it('should have the same elements', function () {
+  //     assert.deepEqual(resultA, resultB)
+  //   })
+  // })
 
-  describe('persist filters', function () {
+  // describe('persist filters', function () {
 
-    var log
-    var SIZE = BUCKET_SIZE * 32 + 1
+  //   var log
+  //   var SIZE = BUCKET_SIZE * 32 + 1
 
-    before(function (done) {
-      this.timeout(10000)
-      add_many(aolog.empty(), SIZE, function (i) { return { is: 'i = ' + i } },
-               function (err, res) {
-                 if (err) throw err
-                 log = res
-                 done()
-               })
-    })
+  //   before(function (done) {
+  //     this.timeout(10000)
+  //     add_many(aolog.empty(), SIZE, function (i) { return { is: 'i = ' + i } },
+  //              function (err, res) {
+  //                if (err) throw err
+  //                log = res
+  //                done()
+  //              })
+  //   })
 
-    it('should have filters on all refs', function () {
-      assert(log.head.filters.is)
-      assert(log.rest.filters.is)
-      assert(log.tail.filters.is)
-    })
+  //   it('should have filters on all refs', function () {
+  //     assert(log.head.filters.is)
+  //     assert(log.rest.filters.is)
+  //     assert(log.tail.filters.is)
+  //   })
 
-    var hash
-    before(function (done) {
-      log.persist(function (err, res) {
-        if (err) throw err
-        hash = res.Hash
-        done()
-      })
-    })
+  //   var hash
+  //   before(function (done) {
+  //     log.persist(function (err, res) {
+  //       if (err) throw err
+  //       hash = res.Hash
+  //       done()
+  //     })
+  //   })
 
-    var restored
-    before(function (done) {
-      aolog.restore(hash, function (err, res) {
-        if (err) throw err
-        restored = res
-        done()
-      })
-    })
+  //   var restored
+  //   before(function (done) {
+  //     aolog.restore(hash, function (err, res) {
+  //       if (err) throw err
+  //       restored = res
+  //       done()
+  //     })
+  //   })
 
-    before(function (done) {
-      // make sure it's all in memory
-      var iter = restored.iterator()
-      async.forever(function (next) {
-        iter.next(function (err, res) {
-          if (err) throw (err)
-          if (res.eof) return next(1)
-          next()
-        })
-      }, function () { done() })
-    })
+  //   before(function (done) {
+  //     // make sure it's all in memory
+  //     var iter = restored.iterator()
+  //     async.forever(function (next) {
+  //       iter.next(function (err, res) {
+  //         if (err) throw (err)
+  //         if (res.eof) return next(1)
+  //         next()
+  //       })
+  //     }, function () { done() })
+  //   })
 
-    it('should have restored the filters', function () {
+  //   it('should have restored the filters', function () {
 
-      assert.equal(log.head.filters.is.toString(),
-                   restored.head.filters.is.toString())
-      assert.equal(log.rest.filters.is.toString(),
-                   restored.rest.filters.is.toString())
-      assert.equal(log.tail.filters.is.toString(),
-                   restored.tail.filters.is.toString())
+  //     assert.equal(log.head.filters.is.toString(),
+  //                  restored.head.filters.is.toString())
+  //     assert.equal(log.rest.filters.is.toString(),
+  //                  restored.rest.filters.is.toString())
+  //     assert.equal(log.tail.filters.is.toString(),
+  //                  restored.tail.filters.is.toString())
 
-      for (var i = 0 ; i < BUCKET_SIZE ; i++) {
-        assert.equal(
-          log.rest.ref.head.ref.refs[i].filters.is.toString(),
-          restored.rest.ref.head.ref.refs[i].filters.is.toString())
-      }
-    })
-  })
+  //     for (var i = 0 ; i < BUCKET_SIZE ; i++) {
+  //       assert.equal(
+  //         log.rest.ref.head.ref.refs[i].filters.is.toString(),
+  //         restored.rest.ref.head.ref.refs[i].filters.is.toString())
+  //     }
+  //   })
+  // })
 
-  describe('persist count', function () {
-    var SIZE = BUCKET_SIZE * 10
-    var log, nlog
-    before(function (done) {
-      add_many(aolog.empty(), SIZE, function (i) { return { is: 'i = ' + i } },
-               function (err, res) {
-                 if (err) throw err
-                 log = res
-                 done()
-               })
-    })
+  // describe('persist count', function () {
+  //   var SIZE = BUCKET_SIZE * 10
+  //   var log, nlog
+  //   before(function (done) {
+  //     add_many(aolog.empty(), SIZE, function (i) { return { is: 'i = ' + i } },
+  //              function (err, res) {
+  //                if (err) throw err
+  //                log = res
+  //                done()
+  //              })
+  //   })
 
-    before(function (done) {
-      log.persist(function (err, persisted) {
-        if (err) throw err
-        aolog.restore(persisted.Hash, function (err, res) {
-          if (err) throw err
-          nlog = res
-          done()
-        })
-      })
-    })
+  //   before(function (done) {
+  //     log.persist(function (err, persisted) {
+  //       if (err) throw err
+  //       aolog.restore(persisted.Hash, function (err, res) {
+  //         if (err) throw err
+  //         nlog = res
+  //         done()
+  //       })
+  //     })
+  //   })
 
-    it('should have persisted count', function () {
-      assert.equal(log.count, nlog.count)
-    })
+  //   it('should have persisted count', function () {
+  //     assert.equal(log.count, nlog.count)
+  //   })
 
-  })
+  // })
 
-  describe('persist, restore, add, persist', function () {
-    var log
-    var SIZE = BUCKET_SIZE * 8
+  // describe('persist, restore, add, persist', function () {
+  //   var log
+  //   var SIZE = BUCKET_SIZE * 8
 
-    var expected = []
+  //   var expected = []
 
-    before(function (done) {
-      this.timeout(10000)
-      add_many(aolog.empty(), SIZE,
-               function (i) {
-                 var val = { is: 'i = ' + i }
-                 expected.push(val)
-                 return val
-               },
-               function (err, res) {
-                 if (err) throw err
-                 log = res
-                 done()
-               })
-    })
+  //   before(function (done) {
+  //     this.timeout(10000)
+  //     add_many(aolog.empty(), SIZE,
+  //              function (i) {
+  //                var val = { is: 'i = ' + i }
+  //                expected.push(val)
+  //                return val
+  //              },
+  //              function (err, res) {
+  //                if (err) throw err
+  //                log = res
+  //                done()
+  //              })
+  //   })
 
-    var hash
+  //   var hash
 
-    before(function (done) {
-      log.persist(function (err, res) {
-        if (err) throw err
-        hash = res.Hash
-        done()
-      })
-    })
+  //   before(function (done) {
+  //     log.persist(function (err, res) {
+  //       if (err) throw err
+  //       hash = res.Hash
+  //       done()
+  //     })
+  //   })
 
-    it('should have persisted', function () {
-      assert.equal(hash.substr(0, 2), 'Qm')
-    })
+  //   it('should have persisted', function () {
+  //     assert.equal(hash.substr(0, 2), 'Qm')
+  //   })
 
-    var restored
-    before(function (done) {
-      aolog.restore(hash, function (err, res) {
-        if (err) throw err
-        restored = res
-        done()
-      })
-    })
+  //   var restored
+  //   before(function (done) {
+  //     aolog.restore(hash, function (err, res) {
+  //       if (err) throw err
+  //       restored = res
+  //       done()
+  //     })
+  //   })
 
-    it('should repersist to the same hash', function (done) {
-      restored.persist(function (err, repersisted) {
-        if (err) throw err
-        assert.equal(repersisted.Hash, hash)
-        done()
-      })
-    })
+  //   it('should repersist to the same hash', function (done) {
+  //     restored.persist(function (err, repersisted) {
+  //       if (err) throw err
+  //       assert.equal(repersisted.Hash, hash)
+  //       done()
+  //     })
+  //   })
 
-    it('should have added to restored bucket', function (done) {
-      var val = {is: 'added after'}
-      expected.push(val)
+  //   it('should have added to restored bucket', function (done) {
+  //     var val = {is: 'added after'}
+  //     expected.push(val)
 
-      restored = restored.append(val, function (err, res) {
-        if (err) throw err
+  //     restored = restored.append(val, function (err, res) {
+  //       if (err) throw err
 
-        res.persist(function (err, repersisted) {
-          if (err) throw err
+  //       res.persist(function (err, repersisted) {
+  //         if (err) throw err
 
-          aolog.restore(repersisted.Hash, function (err, rerestored) {
-            if (err) throw err
+  //         aolog.restore(repersisted.Hash, function (err, rerestored) {
+  //           if (err) throw err
 
-            rerestored.iterator().all(function (err, res) {
-              if (err) throw err
-              assert.deepEqual(expected,
-                               _.map(res, function (x) { return x.element }))
-              done()
-            })
-          })
-        })
-      })
-    })
+  //           rerestored.iterator().all(function (err, res) {
+  //             if (err) throw err
+  //             assert.deepEqual(expected,
+  //                              _.map(res, function (x) { return x.element }))
+  //             done()
+  //           })
+  //         })
+  //       })
+  //     })
+  //   })
   })
 })

@@ -12,40 +12,40 @@ var SKIP = 1
 
 module.exports = function (ipfs, BUCKET_SIZE) {
 
+  var indexFromStack = function (stack) {
+    return _.reduce(stack, function (acc, n) {
+      return acc + n.obj.getOffset(n.idx)
+    }, 0)
+  }
+
+  var stackFromIndex = function (over, idx) {
+    var idxrest = over.offset(idx)
+    var idx = idxrest[0]
+    var rest = idxrest[1]
+
+    var acc = [{ obj: over,
+                 idx: idx }]
+
+    if (over.type === 'Bucket') {
+      return acc
+    } else {
+      return stackFromIndex(over.elements[idx], rest).concat(acc)
+    }
+  }
+
   var Iterator = function (over, opts) {
     if (!opts) opts = {}
     var reverse = !!opts.reverse
     var fullfilter = makefilter(opts.filter)
     var def = reverse ? over.count - 1 : 0
     var offset = (typeof opts.offset !== 'undefined' ? opts.offset : def)
-    var index = offset
 
-    var stack = [{obj: over}]
+    var stack = stackFromIndex(over, offset)
 
     return {
       pushcount: 0,
       next: function (cb) {
         var self = this
-
-        //console.log('next')
-
-        if (stack.length === 0) {
-          return cb(null, { eof: true })
-        }
-
-        if (typeof stack[0].idx === 'undefined') {
-          if (offset !== 'resolved') {
-
-            // console.log('stack[0]')
-            // console.log(stack[0])
-
-            var idxRest = stack[0].obj.offset(offset)
-            stack[0].idx = idxRest[0]
-            offset = idxRest[1]
-          } else {
-            stack[0].idx = reverse ? stack[0].obj.children - 1 : 0
-          }
-        }
 
         stack[0].obj.get(stack[0].idx, fullfilter, function (err, res) {
           if (err) return cb(err)
@@ -57,22 +57,21 @@ module.exports = function (ipfs, BUCKET_SIZE) {
             self.next(cb)
           } else if (res.skip) {
             reverse ? stack[0].idx-- : stack[0].idx++
-            reverse ? index -= res.skip : index += res.skip
             self.next(cb)
           } else if (res.push) {
-
-            // console.log('push', res.push)
-
             self.pushcount++
-            stack.unshift({obj: res.push})
+            stack.unshift({ obj: res.push,
+                            idx: reverse ? res.push.children - 1 : 0 })
             self.next(cb)
           } else if (typeof res.element !== 'undefined') {
-            offset = 'resolved'
+            var index = indexFromStack(stack)
             reverse ? stack[0].idx-- : stack[0].idx++
             cb(null, {
               element: res.element,
-              index: reverse ? index-- : index++
+              index: index
             })
+          } else {
+            throw new Error('unhandled case,' + res)
           }
         })
       },
@@ -134,12 +133,15 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       offset: function (ofs) {
         return [0, ofs]
       },
+      getOffset: function () {
+        return 0
+      },
       get: function (idx, filter, cb) {
         var self = this
 
         if (idx === 0) {
           if (!subsetMatches(self.filters, filter.blooms)) {
-            cb(null, { skip: self.count })
+            cb(null, { skip: true })
           } else if (self.ref) {
             return cb(null, { push: self.ref })
           } else {
@@ -190,6 +192,9 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       offset: function (ofs) {
         return [ofs, 0]
       },
+      getOffset: function (idx) {
+        return idx
+      },
       filter: function () {
         var filter = {}
         _.forEach(this.elements, function (element) {
@@ -211,7 +216,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         if (matches(el, filter.words)) {
           return cb(null, { element: el })
         } else {
-          return cb(null, { skip: 1 })
+          return cb(null, { skip: true })
         }
       },
       persist: function (cb) {
@@ -270,6 +275,13 @@ module.exports = function (ipfs, BUCKET_SIZE) {
           idx++
         }
         return [idx, ofs]
+      },
+      getOffset: function (idx) {
+        var count = 0
+        for (var i = 0 ; i < idx ; i++ ) {
+          count += this.elements[i].count
+        }
+        return count
       },
       get: function (idx, filter, cb) {
         var element = this.elements[idx]
@@ -399,6 +411,13 @@ module.exports = function (ipfs, BUCKET_SIZE) {
           idx++
         }
         return [idx, ofs]
+      },
+      getOffset: function (idx) {
+        var count = 0
+        for (var i = 0 ; i < idx ; i++ ) {
+          count += this.elements[i].count
+        }
+        return count
       },
       get: function (idx, filter, cb) {
         var element = this.elements[idx]
@@ -568,8 +587,9 @@ module.exports = function (ipfs, BUCKET_SIZE) {
   var matches = function (element, filter) {
     var matches = true
     _.forEach(filter, function (value, key) {
+      var regexp = new RegExp('\\b' + value + '\\b', "i")
       if (typeof element[key] !== 'string' ||
-          !element[key].toLowerCase().match(value.toLowerCase())) {
+          !element[key].match(regexp)) {
         matches = false
       }
     })
