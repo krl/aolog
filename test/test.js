@@ -16,9 +16,6 @@ var add_many = function (log, count, fn, cb) {
     log.append(add, function (err, res) {
       if (err) throw err
 
-      // console.log('res')
-      // console.log(res)
-
       log = res
       next()
     })
@@ -688,128 +685,128 @@ describe('persistance', function () {
       assert.equal(hash.substr(0, 2), 'Qm')
     })
 
-  //   var restored
-  //   before(function (done) {
-  //     aolog.restore(hash, function (err, res) {
-  //       if (err) throw err
-  //       restored = res
-  //       done()
-  //     })
-  //   })
+    var restored
+    before(function (done) {
+      aolog.restore(hash, function (err, res) {
+        if (err) throw err
+        restored = res
+        done()
+      })
+    })
 
-  //   it('should have restored the bucket', function () {
-  //     assert(restored)
-  //   })
+    it('should have restored the bucket', function () {
+      assert(restored)
+    })
 
-  //   var resultA = []
-  //   var resultB = []
+    var resultA = []
+    var resultB = []
 
-  //   before(function (done) {
+    before(function (done) {
 
-  //     var iterA = log.iterator()
-  //     var iterB = restored.iterator()
+      var iterA = log.iterator()
+      var iterB = restored.iterator()
 
-  //     var nrdone = 0
-  //     var iterdone = function (done) {
-  //       return function () {
-  //         if (++nrdone === 2) done()
-  //       }
-  //     }
+      var nrdone = 0
+      var iterdone = function (done) {
+        return function () {
+          if (++nrdone === 2) done()
+        }
+      }
 
-  //     async.forever(function (next) {
-  //       iterA.next(function (err, res) {
-  //         if (err) throw (err)
-  //         if (res.eof) return next(1)
-  //         resultA.push(res.element)
-  //         next()
-  //       })
-  //     }, iterdone(done))
+      async.forever(function (next) {
+        iterA.next(function (err, res) {
+          if (err) throw (err)
+          if (res.eof) return next(1)
+          resultA.push(res.element)
+          next()
+        })
+      }, iterdone(done))
 
-  //     async.forever(function (next) {
-  //       iterB.next(function (err, res) {
-  //         if (err) throw (err)
-  //         if (res.eof) return next(1)
-  //         resultB.push(res.element)
-  //         next()
-  //       })
-  //     }, iterdone(done))
-  //   })
+      async.forever(function (next) {
+        iterB.next(function (err, res) {
+          if (err) throw (err)
+          if (res.eof) return next(1)
+          resultB.push(res.element)
+          next()
+        })
+      }, iterdone(done))
+    })
 
-  //   it('should have the same elements', function () {
-  //     assert.deepEqual(resultA, resultB)
-  //   })
-  // })
+    it('should have the same elements', function () {
+      assert.deepEqual(resultA, resultB)
+    })
+  })
 
-  // describe('persist large tree', function () {
+  describe('persist large tree', function () {
 
-  //   var SIZE = 1000
+    var SIZE = 3
 
-  //   var log
-  //   var hash
+    var log
+    var hash
 
-  //   before(function (done) {
-  //     this.timeout(10000)
-  //     add_many(aolog.empty(), SIZE, function (i) { return { is: 'i = ' + i } },
-  //              function (err, res) {
-  //                if (err) throw err
-  //                log = res
-  //                done()
-  //              })
-  //   })
+    before(function (done) {
+      this.timeout(10000)
+      add_many(aolog.empty(), SIZE, function (i) { return { is: 'i = ' + i } },
+               function (err, res) {
+                 if (err) throw err
+                 log = res
+                 done()
+               })
+    })
 
-  //   before(function (done) {
-  //     this.timeout(10000)
-  //     log.persist(function (err, res) {
-  //       if (err) throw err
-  //       hash = res.Hash
-  //       done()
-  //     })
-  //   })
+    before(function (done) {
+      this.timeout(10000)
+      log.persist(function (err, res) {
+        if (err) throw err
+        hash = res.Hash
+        done()
+      })
+    })
 
-  //   var restored
-  //   before(function (done) {
-  //     aolog.restore(hash, function (err, res) {
-  //       if (err) throw err
-  //       restored = res
-  //       done()
-  //     })
-  //   })
+    var restored
+    before(function (done) {
+      aolog.restore(hash, function (err, res) {
+        if (err) throw err
+        restored = res
+        done()
+      })
+    })
 
-  //   var resultA = []
-  //   var resultB = []
+    var resultA = []
+    var resultB = []
 
-  //   before(function (done) {
-  //     this.timeout(10000)
-  //     var iterA = log.iterator()
-  //     var iterB = restored.iterator()
+    before(function (done) {
+      this.timeout(10000)
+      var iterA = log.iterator()
+      var iterB = restored.iterator()
 
-  //     var nrdone = 0
-  //     var iterdone = function (done) {
-  //       return function () {
-  //         if (++nrdone === 2) done()
-  //       }
-  //     }
-  //     async.forever(function (next) {
-  //       iterA.next(function (err, res) {
-  //         if (err) throw (err)
-  //         if (res.eof) return next(1)
-  //         resultA.push(res.element)
-  //         next()
-  //       })
-  //     }, iterdone(done))
-  //     async.forever(function (next) {
-  //       iterB.next(function (err, res) {
-  //         if (err) throw (err)
-  //         if (res.eof) return next(1)
-  //         resultB.push(res.element)
-  //         next()
-  //       })
-  //     }, iterdone(done))
-  //   })
+      var nrdone = 0
+      var iterdone = function (done) {
+        return function () {
+          if (++nrdone === 2) done()
+        }
+      }
+      async.forever(function (next) {
+        iterA.next(function (err, res) {
+          if (err) throw (err)
+          if (res.eof) return next(1)
+          resultA.push(res.element)
+          next()
+        })
+      }, iterdone(done))
+      async.forever(function (next) {
+        iterB.next(function (err, res) {
+          if (err) throw (err)
+          if (res.eof) return next(1)
+          resultB.push(res.element)
+          next()
+        })
+      }, iterdone(done))
+    })
 
-  //   it('should have the same elements', function () {
-  //     assert.deepEqual(resultA, resultB)
-  //   })
+    it('should have the same elements', function () {
+      assert.deepEqual(resultA, resultB)
+    })
   // })
 
   // describe('persist filters', function () {

@@ -1,7 +1,5 @@
 'use strict'
 
-// var persistances = 0
-
 var _ = require('lodash')
 var bloom = require('blomma')(1024, 1)
 var async = require('async')
@@ -12,120 +10,21 @@ var SKIP = 1
 
 module.exports = function (ipfs, BUCKET_SIZE) {
 
-  var indexFromStack = function (stack) {
-    return _.reduce(stack, function (acc, n) {
-      return acc + n.obj.getOffset(n.idx)
-    }, 0)
-  }
-
-  var stackFromIndex = function (over, idx) {
-    var idxrest = over.offset(idx)
-    var idx = idxrest[0]
-    var rest = idxrest[1]
-
-    var acc = [{ obj: over,
-                 idx: idx }]
-
-    if (over.type === 'Bucket') {
-      return acc
-    } else {
-      return stackFromIndex(over.elements[idx], rest).concat(acc)
-    }
-  }
-
-  var Iterator = function (over, opts) {
-    if (!opts) opts = {}
-    var reverse = !!opts.reverse
-    var fullfilter = makefilter(opts.filter)
-    var def = reverse ? over.count - 1 : 0
-    var offset = (typeof opts.offset !== 'undefined' ? opts.offset : def)
-
-    var stack = stackFromIndex(over, offset)
-
-    return {
-      pushcount: 0,
-      next: function (cb) {
-        var self = this
-
-        stack[0].obj.get(stack[0].idx, fullfilter, function (err, res) {
-          if (err) return cb(err)
-
-          if (res.eof) {
-            stack.shift()
-            if (!stack[0]) return cb(null, { eof: true })
-            reverse ? stack[0].idx-- : stack[0].idx++
-            self.next(cb)
-          } else if (res.skip) {
-            reverse ? stack[0].idx-- : stack[0].idx++
-            self.next(cb)
-          } else if (res.push) {
-            self.pushcount++
-            stack.unshift({ obj: res.push,
-                            idx: reverse ? res.push.children - 1 : 0 })
-            self.next(cb)
-          } else if (typeof res.element !== 'undefined') {
-            var index = indexFromStack(stack)
-            reverse ? stack[0].idx-- : stack[0].idx++
-            cb(null, {
-              element: res.element,
-              index: index
-            })
-          } else {
-            throw new Error('unhandled case,' + res)
-          }
-        })
-      },
-      take: function (nr, cb) {
-        var self = this
-        var accum = []
-        async.forever(function (next) {
-          self.next(function (err, res) {
-            if (err) return cb(err)
-            if (res.eof) return cb(null, accum)
-            if (!nr--) return cb(null, accum)
-            accum.push(res)
-            next()
-          })
-        })
-      },
-      all: function (cb) {
-        this.take(Infinity, cb)
-      }
-    }
-  }
-
-  var Ref = function (pointsto, persisted, filters, count) {
-    if (typeof count === 'undefined') {
-      count = pointsto.count
-    } else {
-      count = count
-    }
-
+  var Ref = function (ref, filters, count) {
     return {
       type: 'Ref',
-      filters: filters || (pointsto && pointsto.filter()),
-      ref: pointsto,
+      filters: filters,
+      ref: ref,
       count: count,
       children: 1,
-      persisted: persisted,
       append: function (el, cb) {
-
-        //console.log('append in ref')
-
-        if (this.ref) {
-          this.ref.append(el, function (err, res) {
+        restore(this.persisted.Hash, function (err, restored) {
+          if (err) return cb(err)
+          restored.append(el, function (err, res) {
             if (err) return cb(err)
-            cb(null, new Ref(res))
+            cb(null, res)
           })
-        } else {
-          restore(this.persisted.Hash, function (err, restored) {
-            if (err) return cb(err)
-            restored.append(el, function (err, res) {
-              if (err) return cb(err)
-              cb(null, new Ref(res))
-            })
-          })
-        }
+        })
       },
       filter: function () {
         return this.filters
@@ -177,9 +76,6 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       count: elements.length,
       children: elements.length,
       append: function (el, cb) {
-
-        // console.log('append in bucket')
-
         if (this.elements.length === BUCKET_SIZE) {
           cb(null, { split: [ new Bucket(this.elements),
                               new Bucket([el]) ] })
@@ -253,9 +149,6 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       }, 0),
       children: elements.length,
       append: function (el, cb) {
-
-        //console.log('append in branch')
-
         if (this.elements.length === BUCKET_SIZE) {
           cb(null, { split: [ new Branch(this.elements),
                               new Branch([el]) ]})
@@ -337,9 +230,6 @@ module.exports = function (ipfs, BUCKET_SIZE) {
   }
 
   var Finger = function (elements) {
-    // console.log('--------------++++++++++++++++++++++')
-    // console.log('finger elements')
-    // console.log(elements)
     return {
       type: 'Finger',
       elements: elements,
@@ -354,43 +244,20 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         var newelements = _.clone(self.elements)
         elements[tail].append(el, function (err, res) {
           if (err) return cb(err)
-          // did we split the child?
-
-          // console.log('////////////////////////////////')
-          // console.log(res)
-
           if (res.split) {
-            // yep
             // push first down the middle
-
-            // console.log('huh')
             newelements[2] = res.split[1]
-
             elements[1].append(res.split[0], function (err, pushres) {
               if (err) return cb(err)
-              //if (pushres.split) throw new Error('branch split?')
-
               if (pushres.split) {
-                // branch is full?
-
-                // console.log('branch split!!')
-                // console.log(pushres.split)
-
                 newelements[1] = new Finger([ pushres.split[0],
                                               new Branch([]),
                                               pushres.split[1] ])
-
-                // console.log('newelements[1]')
-                // console.log(newelements[1])
-
               } else {
                 newelements[1] = pushres.value
               }
 
               cb(null, { value: new Finger(newelements)} )
-              // console.log('\\\\\\\\\\\\\\\\\\\\\\\\\\\\')
-              // console.log('res value in branch add')
-              // console.log(res.value)
             })
           } else {
             newelements[2] = res.value
@@ -402,9 +269,6 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         return combine(this.elements)
       },
       offset: function (ofs) {
-
-        // console.log(this)
-
         var idx = 0
         while (this.elements[(idx + 1)] && this.elements[idx].count <= ofs) {
           ofs -= this.elements[idx].count
@@ -431,14 +295,16 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         var self = this
         var filters = {}
         var counts = {}
-        async.series(_.map(['head', 'rest', 'tail'], function (part) {
-          filters[part] = serialize_filters(self[part].filters)
-          counts[part] = self[part].count
+        var parts = ['head', 'rest', 'tail']
+        async.series(_.map(self.elements, function (element, idx) {
+          var name = parts[idx]
+          filters[name] = serialize_filters(self.elements[idx].filters)
+          counts[name] = self.elements[idx].count
           return function (done) {
-            self[part].persist(function (err, persisted) {
+            self.elements[idx].persist(function (err, persisted) {
               if (err) return done(err)
               done(null, {
-                Name: part,
+                Name: name,
                 Hash: persisted.Hash,
                 Size: persisted.Size
               })
@@ -480,34 +346,15 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       ref: ref,
       count: ref.count,
       append: function (el, cb) {
-
-        //console.log('append in root')
-
-        // console.log('this')
-        // console.log(this)
-
         this.ref.append(el, function (err, res) {
           if (err) return cb(err)
-
-          // console.log('addroot')
-          // console.log(res)
-
           if (res.split) {
-
-            // console.log('SPLIT')
-            // console.log(res.split)
-
             var newelements = []
             newelements[0] = res.split[0]
             newelements[1] = new Branch([])
             newelements[2] = res.split[1]
-            //console.log('NEW FINGER B', newelements.length)
             cb(null, new Root(new Finger(newelements)))
           } else {
-
-            // console.log('nosplit')
-            // console.log(res.value)
-
             cb(null, new Root(res.value))
           }
         })
@@ -515,7 +362,110 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       iterator: function (opts) {
         return new Iterator(this.ref, opts)
       },
+      persist: function (cb) {
+        ref.persist(cb)
+      }
     }
+  }
+
+  var Iterator = function (over, opts) {
+    if (!opts) opts = {}
+    var reverse = !!opts.reverse
+    var fullfilter = makefilter(opts.filter)
+    var def = reverse ? over.count - 1 : 0
+    var offset = (typeof opts.offset !== 'undefined' ? opts.offset : def)
+    var stack = null
+
+    return {
+      pushcount: 0,
+      next: function (cb) {
+        var self = this
+
+        // initialize stack
+        if (!stack) {
+          stackFromOffset(over, offset, function (err, newstack) {
+            if (err) return cb(err)
+            stack = newstack
+            self.next(cb)
+          })
+          return
+        }
+
+        stack[0].obj.get(stack[0].idx, fullfilter, function (err, res) {
+          if (err) return cb(err)
+
+          if (res.eof) {
+            stack.shift()
+            if (!stack[0]) return cb(null, { eof: true })
+            reverse ? stack[0].idx-- : stack[0].idx++
+            self.next(cb)
+          } else if (res.skip) {
+            reverse ? stack[0].idx-- : stack[0].idx++
+            self.next(cb)
+          } else if (res.push) {
+            self.pushcount++
+            stack.unshift({ obj: res.push,
+                            idx: reverse ? res.push.children - 1 : 0 })
+            self.next(cb)
+          } else if (typeof res.element !== 'undefined') {
+            var index = offsetFromStack(stack)
+            reverse ? stack[0].idx-- : stack[0].idx++
+            cb(null, {
+              element: res.element,
+              index: index
+            })
+          } else {
+            throw new Error('unhandled case,' + res)
+          }
+        })
+      },
+      take: function (nr, cb) {
+        var self = this
+        var accum = []
+        async.forever(function (next) {
+          self.next(function (err, res) {
+            if (err) return cb(err)
+            if (res.eof) return cb(null, accum)
+            if (!nr--) return cb(null, accum)
+            accum.push(res)
+            next()
+          })
+        })
+      },
+      all: function (cb) {
+        this.take(Infinity, cb)
+      }
+    }
+  }
+
+  var offsetFromStack = function (stack) {
+    return _.reduce(stack, function (acc, n) {
+      return acc + n.obj.getOffset(n.idx)
+    }, 0)
+  }
+
+  var stackFromOffset = function (over, offset, acc, cb) {
+    if (!cb) {
+      cb = acc
+      acc = []
+    }
+
+    var idxrest = over.offset(offset)
+
+    var idx = idxrest[0]
+    var rest = idxrest[1]
+
+    acc.unshift({ obj: over,
+                  idx: idx })
+
+    over.get(idx, {}, function (err, res) {
+      if (err) return cb(err)
+      if (res.push) {
+        stackFromOffset(res.push, rest, acc, cb)
+      } else {
+        cb(null, acc)
+      }
+    })
   }
 
   var serialize_filters = function (filters) {
@@ -609,7 +559,13 @@ module.exports = function (ipfs, BUCKET_SIZE) {
     return matches
   }
 
-  var restore = function (hash, cb) {
+  var restore = function (hash, cbwrap) {
+
+    var cb = function (err, res) {
+      if (err) return cbwrap(err)
+      cbwrap(null, new Root(res))
+    }
+
     ipfs.object.get(hash, function (err, res) {
       if (err) return cb(err)
       var object = JSON.parse(res.Data)
@@ -629,21 +585,19 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         _.forEach(res.Links, function (link) {
           linkmap[link.Name] = link
         })
-        cb(null, new Finger(new Ref(null,
-                                    { Hash: linkmap.head.Hash,
-                                      Size: linkmap.head.Size },
-                                    deserialize_filters(object.filters.head),
-                                    object.counts.head),
-                            new Ref(null,
-                                    { Hash: linkmap.rest.Hash,
-                                      Size: linkmap.rest.Size },
-                                    deserialize_filters(object.filters.rest),
-                                    object.counts.rest),
-                            new Ref(null,
-                                    { Hash: linkmap.tail.Hash,
-                                      Size: linkmap.tail.Size },
-                                    deserialize_filters(object.filters.tail),
-                                    object.counts.tail)))
+
+        cb(null, new Finger([ new Ref({ Hash: linkmap.head.Hash,
+                                        Size: linkmap.head.Size },
+                                      deserialize_filters(object.filters.head),
+                                      object.counts.head),
+                              new Ref({ Hash: linkmap.rest.Hash,
+                                        Size: linkmap.rest.Size },
+                                      deserialize_filters(object.filters.rest),
+                                      object.counts.rest),
+                              new Ref({ Hash: linkmap.tail.Hash,
+                                        Size: linkmap.tail.Size },
+                                      deserialize_filters(object.filters.tail),
+                                      object.counts.tail) ]))
       }
     })
   }
