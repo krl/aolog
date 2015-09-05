@@ -454,77 +454,101 @@ describe('filters', function () {
   })
 
   describe('haystack', function () {
+    var HAYSIZE = 3
 
-    var HAYSIZE = 10000
+    describe('forward search', function () {
+      var log
+      var results = []
 
-    var haystack = []
-    for (var i = 0 ; i < HAYSIZE ; i++) {
-      haystack.push({is: 'haystrand #' + i})
-    }
-    var needle = {is: 'needle'}
+      before(function (done) {
+        this.timeout(40000)
+        add_many(aolog.empty(), HAYSIZE,
+                 function (i) {
+                   return { is: "haystrand #" + i }
+                 },
+                 function (err, res) {
+                   if (err) throw err
+                   log = res
+                   done()
+                 })
+      })
 
-    haystack.push(needle)
-    haystack = _.shuffle(haystack)
-    var needleidx = haystack.indexOf(needle)
-
-    var result = []
-    var resultB = []
-    var log
-
-    before(function (done) {
-      this.timeout(40000)
-      add_many(aolog.empty(), HAYSIZE + 1,
-               function (i) { return haystack[i] },
-               function (err, res) {
-                 if (err) throw err
-                 log = res
-                 done()
-               })
-    })
-
-    before(function (done) {
-      var iter = log.iterator({filter: {is: 'needle'}})
-
-      async.forever(function (next) {
-        iter.next(function (err, res) {
-          if (err) throw (err)
-          if (res.eof) return next(1)
-          result.push(res)
-          next()
+      before(function (done) {
+        var count = 0
+        _.map(range(0, HAYSIZE), function (i) {
+          var iter = log.iterator({
+            filter: {
+              is: 'hAyStRaNd #' + i
+            }
+          }).all(function (err, res) {
+            if (err) throw err
+            results[i] = res
+            if (count++ == HAYSIZE - 1) done()
+          })
         })
-      }, function () { done() })
-    })
+      })
 
-    it('should have found the needle at ' + needleidx, function () {
-      assert.equal(result.length, 1)
-      assert.deepEqual(result[0], {
-        element: {
-          is: 'needle'
-        },
-        index: needleidx
+      it('should have found all the haystrands', function () {
+        for (var i = 0 ; i < HAYSIZE ; i++) {
+          assert.equal(results[i].length, 1)
+          assert.equal(results[i][0].element.is,
+                       "haystrand #" + i)
+        }
       })
     })
 
-    before(function (done) {
-      var iter = log.iterator({filter: {is: 'NeEdle'}})
+    describe("backward search", function () {
+      var log
+      var results = []
 
-      async.forever(function (next) {
-        iter.next(function (err, res) {
-          if (err) throw (err)
-          if (res.eof) return next(1)
-          resultB.push(res)
-          next()
+      before(function (done) {
+        this.timeout(40000)
+        add_many(aolog.empty(), HAYSIZE,
+                 function (i) {
+                   return { is: "haystrand #" + i }
+                 },
+                 function (err, res) {
+                   if (err) throw err
+                   log = res
+                   done()
+                 })
+      })
+
+      before(function (done) {
+        var count = 0
+        _.map(range(0, HAYSIZE), function (i) {
+          var filter = {
+            is: 'hAyStRaNd #' + i
+          }
+          console.log(filter)
+          var iter = log.iterator({
+            filter: filter,
+            reverse: true
+          }).all(function (err, res) {
+            if (err) throw err
+            results[i] = res
+
+            console.log('res')
+            console.log(res)
+
+            if (++count == HAYSIZE) done()
+
+          })
         })
-      }, function () { done() })
-    })
+      })
 
-    it('should have found the nEeDlE at ' + needleidx, function () {
-      assert.equal(resultB.length, 1)
-      assert.deepEqual(resultB[0], {
-        element: {
-          is: 'needle'
-        },
-        index: needleidx
+      it('should have found all the haystrands', function () {
+
+        console.log(results)
+
+        for (var i = 0 ; i < HAYSIZE ; i++) {
+          assert.equal(results[i].length, 1, 'right length')
+          // console.log(results[i][0])
+          assert.equal(results[i][0].index, i, 'right index')
+          assert.equal(results[i][0].element.is,
+                       "haystrand #" + i,
+                       'right strand')
+        }
       })
     })
   })
