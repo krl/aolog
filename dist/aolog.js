@@ -33,7 +33,6 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       },
       get: function (idx, filter, cb) {
         var self = this
-
         restore(self.ref.Hash, function (err, res) {
           if (err) return cb(err)
           cb(null, { restored: res })
@@ -134,7 +133,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       },
       getOffset: function (idx) {
         var count = 0
-        for (var i = 0 ; i < idx ; i++ ) {
+        for (var i = 0 ; i < idx ; i++) {
           count += this.elements[i].count
         }
         return count
@@ -228,11 +227,11 @@ module.exports = function (ipfs, BUCKET_SIZE) {
                 newelements[1] = pushres.value
               }
 
-              cb(null, { value: new Finger(newelements)} )
+              cb(null, { value: new Finger(newelements)})
             })
           } else {
             newelements[2] = res.value
-            cb(null, { value: new Finger(newelements)} )
+            cb(null, { value: new Finger(newelements)})
           }
         })
       },
@@ -246,7 +245,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       },
       getOffset: function (idx) {
         var count = 0
-        for (var i = 0 ; i < idx ; i++ ) {
+        for (var i = 0 ; i < idx ; i++) {
           count += this.elements[i].count
         }
         return count
@@ -383,10 +382,12 @@ module.exports = function (ipfs, BUCKET_SIZE) {
                             idx: reverse ? res.push.children - 1 : 0 })
             self.next(cb)
           } else if (res.restored) {
-            stack[0].obj = res.restored
+            stack[0] = { obj: res.restored,
+                         idx: reverse ? res.restored.children - 1 : 0 }
             self.next(cb)
           } else if (typeof res.element !== 'undefined') {
             var index = offsetFromStack(stack)
+
             reverse ? stack[0].idx-- : stack[0].idx++
             cb(null, {
               element: res.element,
@@ -533,7 +534,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
   var matches = function (element, filter) {
     var matches = true
     _.forEach(filter, function (value, key) {
-      var regexp = new RegExp('\\b' + value + '\\b', "i")
+      var regexp = new RegExp('\\b' + value + '\\b', 'i')
       if (typeof element[key] !== 'string' ||
           !element[key].match(regexp)) {
         matches = false

@@ -1,7 +1,7 @@
 'use strict'
 
 var assert = require('assert')
-var BUCKET_SIZE = 4
+var BUCKET_SIZE = 2
 var ipfs = require('ipfs-api')()
 var aolog = require('../index.js')(ipfs, BUCKET_SIZE)
 var _ = require('lodash')
@@ -30,7 +30,6 @@ function range (from, to) {
   }
   return arr
 }
-
 
 /* global describe, it, before */
 
@@ -134,7 +133,7 @@ describe('iterators', function () {
 
   describe('finger iterator', function () {
 
-    var SIZE = BUCKET_SIZE + 1
+    var SIZE = BUCKET_SIZE * 8
 
     var log
     var expected = []
@@ -457,7 +456,7 @@ describe('filters', function () {
         this.timeout(40000)
         add_many(aolog.empty(), HAYSIZE,
                  function (i) {
-                   return { is: "haystrand #" + i }
+                   return { is: 'haystrand #' + i }
                  },
                  function (err, res) {
                    if (err) throw err
@@ -469,14 +468,14 @@ describe('filters', function () {
       before(function (done) {
         var count = 0
         _.map(range(0, HAYSIZE), function (i) {
-          var iter = log.iterator({
+          log.iterator({
             filter: {
               is: 'hAyStRaNd #' + i
             }
           }).all(function (err, res) {
             if (err) throw err
             results[i] = res
-            if (count++ == HAYSIZE - 1) done()
+            if (count++ === HAYSIZE - 1) done()
           })
         })
       })
@@ -485,12 +484,12 @@ describe('filters', function () {
         for (var i = 0 ; i < HAYSIZE ; i++) {
           assert.equal(results[i].length, 1)
           assert.equal(results[i][0].element.is,
-                       "haystrand #" + i)
+                       'haystrand #' + i)
         }
       })
     })
 
-    describe("backward search", function () {
+    describe('backward search', function () {
       var log
       var results = []
 
@@ -498,7 +497,7 @@ describe('filters', function () {
         this.timeout(40000)
         add_many(aolog.empty(), HAYSIZE,
                  function (i) {
-                   return { is: "haystrand #" + i }
+                   return { is: 'haystrand #' + i }
                  },
                  function (err, res) {
                    if (err) throw err
@@ -510,7 +509,7 @@ describe('filters', function () {
       before(function (done) {
         var count = 0
         _.map(range(0, HAYSIZE), function (i) {
-          var iter = log.iterator({
+          log.iterator({
             filter: {
               is: 'hAyStRaNd #' + i
             },
@@ -518,7 +517,7 @@ describe('filters', function () {
           }).all(function (err, res) {
             if (err) throw err
             results[i] = res
-            if (++count == HAYSIZE) done()
+            if (++count === HAYSIZE) done()
           })
         })
       })
@@ -528,7 +527,7 @@ describe('filters', function () {
           assert.equal(results[i].length, 1, 'right length')
           assert.equal(results[i][0].index, i, 'right index')
           assert.equal(results[i][0].element.is,
-                       "haystrand #" + i,
+                       'haystrand #' + i,
                        'right strand')
         }
       })
@@ -558,9 +557,10 @@ describe('index', function () {
     add_many(aolog.empty(), SIZE,
              function (i, current) {
                current.iterator().all(function (err, res) {
+                 if (err) throw err
                  assert.deepEqual(range(0, i),
                                   _.map(res, function (x) { return x.index }))
-                 if (++count == SIZE) done()
+                 if (++count === SIZE) done()
                })
                return i
              },
@@ -575,9 +575,10 @@ describe('index', function () {
     add_many(aolog.empty(), SIZE,
              function (i, current) {
                current.iterator({ offset: offset }).all(function (err, res) {
+                 if (err) throw err
                  assert.deepEqual(range(offset, i),
                                   _.map(res, function (x) { return x.index }))
-                 if (++count == SIZE) done()
+                 if (++count === SIZE) done()
                })
                return i
              },
@@ -587,7 +588,6 @@ describe('index', function () {
   })
 
   it('should have the correct reverse indicies', function (done) {
-    var count = 0
     add_many(aolog.empty(), SIZE,
              function (i, current) {
                return i
@@ -761,7 +761,7 @@ describe('persistance', function () {
   describe('persist filters', function () {
 
     var log
-    var SIZE = BUCKET_SIZE * 32 + 1
+    var SIZE = BUCKET_SIZE * 10
 
     before(function (done) {
       this.timeout(10000)
@@ -921,6 +921,362 @@ describe('persistance', function () {
             })
           })
         })
+      })
+    })
+  })
+
+  var persist_restore = function (log, cb) {
+    log.persist(function (err, res) {
+      if (err) throw err
+      aolog.restore(res.Hash, cb)
+    })
+  }
+
+  describe('persisted finger iterator', function () {
+    var SIZE = BUCKET_SIZE + 1
+
+    var log
+    var expected = []
+
+    before(function (done) {
+      add_many(aolog.empty(), SIZE,
+               function (i) {
+                 expected.push(i)
+                 return i
+               },
+               function (err, res) {
+                 if (err) throw err
+                 persist_restore(res, function (err, res) {
+                   if (err) throw err
+                   log = res
+                   done()
+                 })
+               })
+    })
+
+    var result = []
+
+    before(function (done) {
+      var iter = log.iterator()
+      async.forever(function (next) {
+        iter.next(function (err, res) {
+          if (err) throw (err)
+          if (res.eof) return next(1)
+          result.push(res.element)
+          next()
+        })
+      }, function () { done() })
+    })
+
+    it('should have gotten the right elements', function () {
+      assert.deepEqual(expected, result)
+    })
+
+    var nr = Math.floor(SIZE / 3)
+    var resultPart = []
+
+    before(function (done) {
+      var iter = log.iterator()
+
+      iter.take(nr, function (err, array) {
+        if (err) throw err
+        resultPart = _.map(array, function (x) { return x.element })
+        done()
+      })
+    })
+
+    it('should have taken ' + nr + ' of ' + SIZE + ' elements', function () {
+      assert.deepEqual(resultPart, expected.slice(0, nr))
+    })
+
+    var resultTakeMore
+
+    before(function (done) {
+      var iter = log.iterator()
+
+      iter.take(SIZE * 2, function (err, array) {
+        if (err) throw err
+        resultTakeMore = _.map(array, function (x) { return x.element })
+        done()
+      })
+
+    })
+
+    it('should have stopped at ' + SIZE + ' elements', function () {
+      assert.deepEqual(resultTakeMore, expected)
+    })
+
+    var resultAll = []
+    before(function (done) {
+      var iter = log.iterator()
+
+      iter.all(function (err, array) {
+        if (err) throw err
+        resultAll = _.map(array, function (x) { return x.element })
+        done()
+      })
+
+    })
+
+    it('should have taken all elements', function () {
+      assert.deepEqual(resultAll, expected)
+    })
+
+    var reference = []
+
+    before(function (done) {
+      add_many(aolog.empty(), SIZE,
+               function (i) {
+                 reference.push(i)
+                 return i
+               },
+               function (err, res) {
+                 if (err) throw err
+                 persist_restore(res, function (err, res) {
+                   if (err) throw err
+                   log = res
+                   done()
+                 })
+               })
+    })
+
+    it('should take all from all offsets', function (done) {
+      var count = 0
+
+      _.map(range(0, SIZE), function (ofs) {
+        var iter = log.iterator({offset: ofs})
+        count++
+        iter.all(function (err, array) {
+          if (err) throw err
+          assert.deepEqual(_.map(array, function (x) { return x.element }),
+                           reference.slice(ofs))
+          if (!--count) done()
+        })
+      })
+    })
+
+    it('should take 1 from all offsets', function (done) {
+      var count = 0
+      _.map(range(0, SIZE), function (ofs) {
+        var iter = log.iterator({offset: ofs})
+        iter.next(function (err, res) {
+          if (err) throw err
+          assert.deepEqual(res.element, reference[ofs])
+          if (++count === SIZE) done()
+        })
+      })
+    })
+
+    it('should take all from all offsets in reverse2', function (done) {
+      var count = 0
+
+      _.map(range(0, SIZE), function (ofs) {
+        var iter = log.iterator({offset: ofs, reverse: true})
+        count++
+        iter.all(function (err, array) {
+          if (err) throw err
+          assert.deepEqual(_.map(array, function (x) { return x.element }),
+                           reference.slice(0, ofs + 1).reverse())
+          if (!--count) done()
+        })
+      })
+    })
+
+    it('should take 1 from all offsets in reverse', function (done) {
+      var count = 0
+      _.map(range(0, SIZE), function (ofs) {
+        var iter = log.iterator({offset: ofs, reverse: true})
+        iter.next(function (err, res) {
+          if (err) throw err
+          assert.deepEqual(res.element, reference[ofs])
+          if (++count === SIZE) done()
+        })
+      })
+    })
+  })
+
+  describe('persisted finger iterator reverse', function () {
+    var log
+    var SIZE = BUCKET_SIZE * 5
+    var expected = []
+
+    before(function (done) {
+      add_many(aolog.empty(), SIZE,
+               function (i) {
+                 expected.unshift(i)
+                 return i
+               },
+               function (err, res) {
+                 if (err) throw err
+                 persist_restore(res, function (err, res) {
+                   if (err) throw err
+                   log = res
+                   done()
+                 })
+               })
+    })
+
+    var result = []
+
+    it('should have gotten the right elements', function (done) {
+      var iter = log.iterator({reverse: true})
+
+      async.forever(function (next) {
+        iter.next(function (err, res) {
+          if (err) throw (err)
+          if (res.eof) return next(1)
+
+          result.push(res.element)
+          next()
+        })
+      }, function () {
+        assert.deepEqual(expected, result)
+        done()
+      })
+    })
+
+    var nr = Math.floor(SIZE / 3)
+    var resultPart = []
+
+    before(function (done) {
+      var iter = log.iterator({reverse: true})
+
+      iter.take(nr, function (err, array) {
+        if (err) throw err
+        resultPart = _.map(array, function (x) { return x.element })
+        done()
+      })
+    })
+
+    it('should have taken ' + nr + ' of ' + SIZE + ' elements', function () {
+      assert.deepEqual(resultPart, expected.slice(0, nr))
+    })
+
+    var resultTakeMore
+
+    before(function (done) {
+      var iter = log.iterator({reverse: true})
+
+      iter.take(SIZE * 2, function (err, array) {
+        if (err) throw err
+        resultTakeMore = _.map(array, function (x) { return x.element })
+        done()
+      })
+
+    })
+
+    it('should have stopped at ' + SIZE + ' elements', function () {
+      assert.deepEqual(resultTakeMore, expected)
+    })
+
+    var resultAll = []
+    before(function (done) {
+      var iter = log.iterator({reverse: true})
+
+      iter.all(function (err, array) {
+        if (err) throw err
+        resultAll = _.map(array, function (x) { return x.element })
+        done()
+      })
+
+    })
+
+    it('should have taken all elements', function () {
+      assert.deepEqual(resultAll, expected)
+    })
+  })
+
+  describe('persistant haystack', function () {
+    var HAYSIZE = 20
+
+    describe('forward search', function () {
+      var log
+      var results = []
+
+      before(function (done) {
+        this.timeout(40000)
+        add_many(aolog.empty(), HAYSIZE,
+                 function (i) {
+                   return { is: 'haystrand #' + i }
+                 },
+                 function (err, res) {
+                   if (err) throw err
+                   persist_restore(res, function (err, res) {
+                     if (err) throw err
+                     log = res
+                     done()
+                   })
+                 })
+      })
+
+      before(function (done) {
+        var count = 0
+        _.map(range(0, HAYSIZE), function (i) {
+          log.iterator({
+            filter: {
+              is: 'hAyStRaNd #' + i
+            }
+          }).all(function (err, res) {
+            if (err) throw err
+            results[i] = res
+            if (count++ === HAYSIZE - 1) done()
+          })
+        })
+      })
+
+      it('should have found all the haystrands', function () {
+        for (var i = 0 ; i < HAYSIZE ; i++) {
+          assert.equal(results[i].length, 1)
+          assert.equal(results[i][0].element.is,
+                       'haystrand #' + i)
+        }
+      })
+    })
+
+    describe('backward search', function () {
+      var log
+      var results = []
+
+      before(function (done) {
+        this.timeout(40000)
+        add_many(aolog.empty(), HAYSIZE,
+                 function (i) {
+                   return { is: 'haystrand #' + i }
+                 },
+                 function (err, res) {
+                   if (err) throw err
+                   persist_restore(res, function (err, res) {
+                     if (err) throw err
+                     log = res
+                     done()
+                   })
+                 })
+      })
+
+      before(function (done) {
+        var count = 0
+        _.map(range(0, HAYSIZE), function (i) {
+          log.iterator({
+            filter: {
+              is: 'hAyStRaNd #' + i
+            },
+            reverse: true
+          }).all(function (err, res) {
+            if (err) throw err
+            results[i] = res
+            if (++count === HAYSIZE) done()
+          })
+        })
+      })
+
+      it('should have found all the haystrands', function () {
+        for (var i = 0 ; i < HAYSIZE ; i++) {
+          assert.equal(results[i].length, 1, 'right length')
+          assert.equal(results[i][0].index, i, 'right index')
+          assert.equal(results[i][0].element.is,
+                       'haystrand #' + i,
+                       'right strand')
+        }
       })
     })
   })
