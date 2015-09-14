@@ -365,6 +365,8 @@ module.exports = function (ipfs, BUCKET_SIZE) {
           return
         }
 
+        if (!stack[0]) return cb(null, { eof: true })
+
         stack[0].obj.get(stack[0].idx, fullfilter, function (err, res) {
           if (err) return cb(err)
 
