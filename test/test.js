@@ -1281,3 +1281,19 @@ describe('persistance', function () {
     })
   })
 })
+
+describe('concat', function () {
+  it('should be able to add arrays', function (done) {
+    var elements = [1, 2, 3, 4, "hello", 5]
+    var log = aolog.empty()
+    log.concat(elements, function (err, res) {
+      if (err) throw err
+      res.iterator().all(function (err, res) {
+        assert.deepEqual(_.map(res, function (x) { return x.element }),
+                         elements)
+
+        done()
+      })
+    })
+  })
+})
