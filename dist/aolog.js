@@ -31,7 +31,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       getOffset: function () {
         return 0
       },
-      get: function (idx, filter, cb) {
+      getChild: function (idx, filter, cb) {
         var self = this
         restore(self.ref.Hash, function (err, res) {
           if (err) return cb(err)
@@ -67,7 +67,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       getOffset: function (idx) {
         return idx
       },
-      get: function (idx, filter, cb) {
+      getChild: function (idx, filter, cb) {
         var el = this.elements[idx]
         if (typeof el === 'undefined') return cb(null, { eof: true })
 
@@ -138,7 +138,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         }
         return count
       },
-      get: function (idx, filter, cb) {
+      getChild: function (idx, filter, cb) {
         var element = this.elements[idx]
 
         if (element) {
@@ -250,7 +250,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         }
         return count
       },
-      get: function (idx, filter, cb) {
+      getChild: function (idx, filter, cb) {
         var element = this.elements[idx]
         if (element) {
           if (!subsetMatches(element.filters, filter.blooms)) {
@@ -338,6 +338,25 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       },
       persist: function (cb) {
         ref.persist(cb)
+      },
+      concat: function (items, cb) {
+        var idx = 0
+        var log = this
+        async.forever(function (next) {
+          log.append(items[idx++], function (err, res) {
+            if (err) return cb(err)
+            if (idx === items.length) return cb(null, res)
+            log = res
+            next()
+          })
+        })
+      },
+      get: function (idx, cb) {
+        var self = this
+        self.iterator({ offset: idx }).next(function (err, res) {
+          if (err) return cb(err)
+          cb(null, res)
+        })
       }
     }
   }
@@ -367,7 +386,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
 
         if (!stack[0]) return cb(null, { eof: true })
 
-        stack[0].obj.get(stack[0].idx, fullfilter, function (err, res) {
+        stack[0].obj.getChild(stack[0].idx, fullfilter, function (err, res) {
           if (err) return cb(err)
 
           if (res.eof) {
@@ -439,7 +458,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
     acc.unshift({ obj: over,
                   idx: idx })
 
-    over.get(idx, {}, function (err, res) {
+    over.getChild(idx, {}, function (err, res) {
       if (err) return cb(err)
       if (res.restored) {
         acc.shift()

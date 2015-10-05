@@ -353,7 +353,7 @@ module.exports = function (ipfs, BUCKET_SIZE) {
         var self = this
         self.iterator({ offset: idx }).next(function (err, res) {
           if (err) return cb(err)
-          cb(res)
+          cb(null, res)
         })
       }
     }
