@@ -553,12 +553,14 @@ module.exports = function (ipfs, BUCKET_SIZE) {
   var matches = function (element, filter) {
     var matches = true
     _.forEach(filter, function (value, key) {
-      var regexp = new RegExp('\\b' + value + '\\b', 'i')
+      // TODO use pluggable tokenizer
+      var regexp = new RegExp('(?:^| )' + value + '(?:$| |[?!,.])', 'i')
       if (typeof element[key] !== 'string' ||
           !element[key].match(regexp)) {
         matches = false
       }
     })
+
     return matches
   }
 
