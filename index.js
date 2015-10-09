@@ -206,7 +206,6 @@ module.exports = function (ipfs, BUCKET_SIZE) {
       }, 0),
       children: 3,
       append: function (el, cb) {
-
         var self = this
         var tail = 2
         var newelements = _.clone(self.elements)
